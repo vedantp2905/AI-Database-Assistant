@@ -1,0 +1,8 @@
+google-generativeai
+langchain-google-genai
+chromadb
+sqlalchemy
+python-dotenv
+pandas
+sqlparse
+mysql-connector-python 
