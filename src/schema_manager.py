@@ -1,5 +1,5 @@
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain_community.vectorstores import Chroma
+from langchain_chroma import Chroma
 from sqlalchemy import create_engine, MetaData
 import google.generativeai as genai
 import os
@@ -10,11 +10,30 @@ class SchemaManager:
         self.vector_store_path = vector_store_path
         
         # Initialize Google API
-        genai.configure(api_key=os.getenv('GOOGLE_API_KEY'))
-        self.embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+        api_key = os.getenv('GOOGLE_API_KEY')
+        if not api_key:
+            raise ValueError("GOOGLE_API_KEY environment variable is not set")
         
-        self.vector_store = None
-        self.engine = create_engine(db_url)
+        genai.configure(api_key=api_key)
+        self.embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001",google_api_key=api_key)
+        
+        # Initialize engine
+        try:
+            self.engine = create_engine(db_url)
+            # Test connection
+            with self.engine.connect() as conn:
+                pass
+        except Exception as e:
+            raise ConnectionError(f"Failed to connect to database: {str(e)}")
+        
+        # Try to load existing vector store
+        try:
+            self.vector_store = Chroma(
+                persist_directory=self.vector_store_path,
+                embedding_function=self.embeddings
+            )
+        except:
+            self.vector_store = None
         
     def get_schema_info(self):
         """Extract schema information from database"""

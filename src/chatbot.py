@@ -12,11 +12,29 @@ class DBChatbot:
             temperature=0.1
         )
         self.sql_validator = SQLValidator()
+        self.context = []  # To store previous interactions
+        
+    def update_context(self, user_question, response):
+        """Update the context with the latest question and response."""
+        self.context.append({"question": user_question, "response": response})
+        if len(self.context) > 10:  # Limit context size
+            self.context.pop(0)
         
     def get_relevant_schema(self, query):
         """Get relevant schema information based on the query"""
         results = self.schema_manager.vector_store.similarity_search(query, k=3)
-        return "\n".join([doc.page_content for doc in results])
+        schema_info = "\n".join([doc.page_content for doc in results])
+        
+        return f"""IMPORTANT: Below is the exact database schema with correct table and column names.
+Use ONLY these exact names in your query:
+
+{schema_info}
+
+IMPORTANT RULES:
+1. Use ONLY the exact table and column names shown above
+2. Do not use aliases like 'e' or 'd' unless you define them in proper table aliases
+3. Every column reference must exactly match a column from the schema
+4. Do not guess or assume column names - use only what is explicitly shown"""
     
     def generate_sql(self, user_query):
         """Generate SQL query from natural language"""
@@ -26,19 +44,26 @@ class DBChatbot:
         if not relevant_schema:
             raise ValueError("No relevant tables found in the database schema for this query.")
         
+        # Include context in the prompt
+        context_str = "\n".join([f"Q: {item['question']}\nA: {item['response']}" for item in self.context])
+        
         prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are a SQL expert. Given the following database schema and user question, 
-             first verify if the question can be answered using ONLY the provided schema tables.
-             If not, respond with exactly 'INVALID_QUERY'.
-             
-             Schema information:
-             {schema}
-             
-             Rules:
-             1. Only use tables mentioned in the schema above
-             2. Generate raw SQL without any formatting or code blocks
-             3. If tables needed are not in schema, return 'INVALID_QUERY'"""),
-            ("human", "{question}")
+            ("system", f"""You are a SQL expert. Use the context below to generate a SQL query using ONLY the exact table and column names as shown in the schema below.
+            
+Context:
+{context_str}
+
+Schema information:
+{relevant_schema}
+
+CRITICAL RULES:
+1. ALWAYS use fully qualified column names (table_name.column_name)
+2. ONLY use the exact join conditions shown in the schema examples
+3. NEVER create column aliases that don't exist in the schema
+4. For joins, copy the exact join syntax from the schema examples
+5. If you can't find an exact column or join path in the schema, respond with 'INVALID_QUERY'
+"""),
+            ("human", "Write a SQL query using ONLY the exact table.column names shown above to answer: {question}")
         ])
         
         chain = (
@@ -56,7 +81,7 @@ class DBChatbot:
                          .replace('`', '')
                          .strip())
         
-        if sql_query == 'INVALID_QUERY' or 'student' in sql_query.lower():  # Example of checking for non-existent tables
+        if sql_query == 'INVALID_QUERY':
             raise ValueError("This question cannot be answered using the available database schema.")
         
         return sql_query
@@ -96,6 +121,9 @@ class DBChatbot:
             
             # Generate response with original question
             response = self.generate_response(result, user_question)
+            
+            # Update context with the latest question and response
+            self.update_context(user_question, response)
             
             return {
                 "success": True,

@@ -4,11 +4,13 @@ import os
 import json
 
 def embed_schema():
-    # Load environment variables
-    load_dotenv()
+    # Force reload environment variables
+    os.environ.clear()
+    load_dotenv(override=True)
     
     # Initialize SchemaManager with your database URL
     db_url = os.getenv("DATABASE_URL")
+    print(f"Using database URL: {db_url}")
     schema_manager = SchemaManager(db_url)
     
     # Get and print schema info before embedding
