@@ -22,8 +22,8 @@ class DBChatbot:
         
     def get_relevant_schema(self, query):
         """Get relevant schema information based on the query"""
-        results = self.schema_manager.vector_store.similarity_search(query, k=3)
-        schema_info = "\n".join([doc.page_content for doc in results])
+        results = self.schema_manager.similarity_search(query, k=3)
+        schema_info = "\n".join([doc['content'] for doc in results])
         
         return f"""IMPORTANT: Below is the exact database schema with correct table and column names.
 Use ONLY these exact names in your query:

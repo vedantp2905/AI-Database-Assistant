@@ -1,5 +1,6 @@
 google-generativeai==0.8.3
 langchain-google-genai==2.0.8
+langchain
 sqlalchemy==2.0.37
 python-dotenv==1.0.1
 pandas==2.2.3
@@ -10,3 +11,4 @@ langchain-chroma==0.2.0
 plotly==5.24.1
 streamlit-lottie==0.0.5
 requests==2.32.3
+pymysql
