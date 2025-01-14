@@ -1,5 +1,9 @@
-import streamlit as st
+import warnings
 import os
+os.environ['TOKENIZERS_PARALLELISM'] = 'false'
+warnings.filterwarnings('ignore', category=UserWarning)
+warnings.filterwarnings('ignore', module='torch.classes')
+import streamlit as st
 from dotenv import load_dotenv
 from schema_manager import SchemaManager
 from chatbot import DBChatbot
@@ -34,6 +38,12 @@ def load_css():
         
         /* Keep sidebar text white */
         [data-testid="stSidebar"] .stMarkdown {
+            color: #ffffff !important;
+        }
+        
+        /* Make selectbox text white */
+        [data-testid="stSidebar"] .stSelectbox label,
+        [data-testid="stSidebar"] .stSelectbox div[data-baseweb="select"] {
             color: #ffffff !important;
         }
         
@@ -155,11 +165,25 @@ def initialize_session_state():
         st.session_state.chat_history = []
     if 'chatbot' not in st.session_state:
         load_dotenv()
+        
+        # Add model selection in sidebar
+        with st.sidebar:
+            llm_provider = st.selectbox(
+                "Select LLM Provider",
+                ["sambanova", "gemini"],
+                help="SambaNova (faster) or Google's Gemini"
+            )
+            
         with st.spinner('Initializing chatbot...'):
             db_url = os.getenv("DATABASE_URL")
             schema_manager = SchemaManager(db_url)
-            schema_manager.update_vector_store()
-            st.session_state.chatbot = DBChatbot(schema_manager)
+            
+            # Only update vector store if embeddings don't exist
+            if not schema_manager.embeddings_exist():
+                with st.spinner('Generating schema embeddings...'):
+                    schema_manager.update_vector_store()
+            
+            st.session_state.chatbot = DBChatbot(schema_manager, llm_provider)
     if 'schema_info' not in st.session_state:
         st.session_state.schema_info = st.session_state.chatbot.schema_manager.get_schema_info()
 
@@ -257,6 +281,8 @@ def main():
     with col2:
         if lottie_json:
             st_lottie(lottie_json, height=100, key="database_animation")
+    
+    warnings.filterwarnings('ignore', category=UserWarning, module='torch')
     
     initialize_session_state()
     

@@ -4,7 +4,8 @@ import logging
 import os
 from sentence_transformers import SentenceTransformer
 from sqlalchemy import create_engine, MetaData, text
-import pymysql
+from typing import List, Dict
+from numpy.linalg import norm
 
 class SchemaManager:
     def __init__(self, db_url, vector_store_path="./vector_store", model_path="./models"):
@@ -52,59 +53,32 @@ class SchemaManager:
         except Exception as e:
             logging.error(f"Model initialization failed: {e}")
             raise
-        
+
         try:
-            # Hardcoded PyMySQL connection
-            timeout = 30
-            self.mysql_conn = pymysql.connect(
-                charset="utf8mb4",
-                connect_timeout=timeout,
-                cursorclass=pymysql.cursors.DictCursor,
-                db="threetables",
-                host="134.209.216.55",
-                password="AVNS_NM6xK_jeLt7vvQQAnx7",
-                read_timeout=timeout,
-                port=27573,
-                user="avnadmin",
-                write_timeout=timeout
-            )
-            print("PyMySQL Connection successful!")
-            
-            # Test PyMySQL connection
-            with self.mysql_conn.cursor() as cursor:
-                cursor.execute("SELECT VERSION()")
-                version = cursor.fetchone()
-                print(f"MySQL Version: {version}")
-            
-            # Create SQLAlchemy engine
-            engine_url = "mysql+pymysql://avnadmin:AVNS_NM6xK_jeLt7vvQQAnx7@134.209.216.55:27573/threetables"
+            # Create SQLAlchemy engine using the provided database URL
             connect_args = {
-                'connect_timeout': timeout,
-                'read_timeout': timeout,
-                'write_timeout': timeout,
-                'charset': 'utf8mb4'
+                'connect_timeout': 30,
+                'pool_recycle': 3600
             }
             
             self.engine = create_engine(
-                engine_url,
-                connect_args=connect_args,
-                pool_pre_ping=True,
-                pool_recycle=3600
+                self.db_url,
+                pool_pre_ping=True
             )
             
-            # Test SQLAlchemy connection
+            # Test connection
             with self.engine.connect() as conn:
                 result = conn.execute(text("SELECT 1")).fetchone()
-                print("SQLAlchemy Connection successful!")
+                logging.info("Database connection successful!")
                 
         except Exception as e:
-            print(f"Detailed error: {str(e)}")
-            print(f"Error type: {type(e)}")
-            if hasattr(e, 'args') and len(e.args) > 1:
-                print(f"Error code: {e.args[0]}")
-                print(f"Error message: {e.args[1]}")
+            logging.error(f"Database connection error: {str(e)}")
             raise ConnectionError(f"Failed to connect to database: {str(e)}")
         
+        # Add normalized embeddings cache
+        self.normalized_embeddings = None
+        self._normalize_embeddings()
+    
     def _save_stored_data(self):
         """Save embeddings and metadata to files"""
         if self.schema_embeddings is not None:
@@ -165,32 +139,48 @@ class SchemaManager:
             schema_info.append(table_info)
         return schema_info
     
-    def similarity_search(self, query, k=3):
-        """Perform similarity search using sentence transformers directly"""
+    def _normalize_embeddings(self):
+        """Normalize embeddings for faster cosine similarity"""
+        if self.schema_embeddings is not None:
+            # Normalize embeddings for faster cosine similarity computation
+            self.normalized_embeddings = self.schema_embeddings / np.maximum(
+                norm(self.schema_embeddings, axis=1, keepdims=True),
+                1e-12  # Avoid division by zero
+            )
+    
+    def similarity_search(self, query: str, k: int = 3, threshold: float = 0.5) -> List[Dict]:
+        """Optimized similarity search using normalized embeddings"""
+        # Encode and normalize query
         query_embedding = self.model.encode([query])[0]
+        query_norm = query_embedding / np.maximum(norm(query_embedding), 1e-12)
         
-        # Calculate cosine similarity
-        similarities = np.dot(self.schema_embeddings, query_embedding) / (
-            np.linalg.norm(self.schema_embeddings, axis=1) * np.linalg.norm(query_embedding)
-        )
+        # Compute similarities using normalized vectors (dot product = cosine similarity)
+        similarities = np.dot(self.normalized_embeddings, query_norm)
         
-        # Get top k results
+        # Get top k results above threshold
         top_k_indices = np.argsort(similarities)[-k:][::-1]
+        top_k_scores = similarities[top_k_indices]
         
         results = []
-        for idx in top_k_indices:
+        for idx, score in zip(top_k_indices, top_k_scores):
+            if score < threshold:
+                continue
             results.append({
                 'content': self.schema_texts[idx],
-                'metadata': self.schema_metadata[idx]
+                'metadata': self.schema_metadata[idx],
+                'score': float(score)
             })
-            
+        
         return results
 
     def update_vector_store(self):
-        """Update schema embeddings"""
+        """Update schema embeddings with optimization"""
         schema_info = self.get_schema_info()
         self.schema_texts = []
         self.schema_metadata = []
+        
+        # Batch process descriptions for better performance
+        descriptions = []
         
         for table in schema_info:
             description = f"Table {table['table_name']} contains columns: "
@@ -207,11 +197,62 @@ class SchemaManager:
                 column_descriptions.append(col_desc)
             
             description += ", ".join(column_descriptions)
+            descriptions.append(description)
             self.schema_texts.append(description)
             self.schema_metadata.append({"table": table['table_name']})
         
-        # Create embeddings
-        self.schema_embeddings = self.model.encode(self.schema_texts)
+        # Batch encode all descriptions at once
+        self.schema_embeddings = self.model.encode(
+            descriptions,
+            batch_size=32,  # Adjust based on your GPU/CPU
+            show_progress_bar=True,
+            convert_to_numpy=True,
+            normalize_embeddings=True  # Pre-normalize embeddings
+        )
+        
+        # Update normalized embeddings cache
+        self._normalize_embeddings()
         
         # Save to files
         self._save_stored_data()
+
+    def semantic_table_search(self, query: str, min_score: float = 0.6) -> List[Dict]:
+        """Search for semantically similar tables"""
+        results = self.similarity_search(query, k=len(self.schema_texts), threshold=min_score)
+        
+        # Group by table and aggregate scores
+        table_scores = {}
+        for result in results:
+            table_name = result['metadata']['table']
+            score = result['score']
+            if table_name not in table_scores or score > table_scores[table_name]['score']:
+                table_scores[table_name] = {
+                    'table': table_name,
+                    'score': score,
+                    'description': result['content']
+                }
+        
+        # Sort by score and return results
+        return sorted(
+            table_scores.values(),
+            key=lambda x: x['score'],
+            reverse=True
+        )
+
+    def embeddings_exist(self) -> bool:
+        """Check if embeddings and metadata files exist and are valid"""
+        if not os.path.exists(self.embeddings_file) or \
+           not os.path.exists(self.texts_file) or \
+           not os.path.exists(self.metadata_file):
+            return False
+        
+        try:
+            # Quick validation of files
+            np.load(self.embeddings_file)
+            with open(self.texts_file) as f:
+                json.load(f)
+            with open(self.metadata_file) as f:
+                json.load(f)
+            return True
+        except Exception:
+            return False

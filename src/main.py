@@ -10,8 +10,10 @@ def main():
     db_url = os.getenv("DATABASE_URL")
     schema_manager = SchemaManager(db_url)
     
-    # Update vector store with current schema
-    schema_manager.update_vector_store()
+    # Only update vector store if embeddings don't exist
+    if not schema_manager.embeddings_exist():
+        print("Generating schema embeddings...")
+        schema_manager.update_vector_store()
     
     # Initialize chatbot
     chatbot = DBChatbot(schema_manager)

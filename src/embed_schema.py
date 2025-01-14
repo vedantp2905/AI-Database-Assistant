@@ -13,6 +13,12 @@ def embed_schema():
     print(f"Using database URL: {db_url}")
     schema_manager = SchemaManager(db_url)
     
+    if schema_manager.embeddings_exist():
+        response = input("Embeddings already exist. Do you want to regenerate them? (y/N): ")
+        if response.lower() != 'y':
+            print("Skipping embedding generation.")
+            return
+    
     # Get and print schema info before embedding
     schema_info = schema_manager.get_schema_info()
     print("\nDatabase Schema:")

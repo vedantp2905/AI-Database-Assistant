@@ -3,14 +3,12 @@ from langchain.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 import pandas as pd
 from sql_validator import SQLValidator
+from llm_factory import LLMFactory
 
 class DBChatbot:
-    def __init__(self, schema_manager):
+    def __init__(self, schema_manager, llm_provider="gemini"):
         self.schema_manager = schema_manager
-        self.llm = ChatGoogleGenerativeAI(
-            model="gemini-1.5-pro",
-            temperature=0.1
-        )
+        self.llm = LLMFactory.create_llm(llm_provider)
         self.sql_validator = SQLValidator()
         self.context = []  # To store previous interactions
         
@@ -22,13 +20,33 @@ class DBChatbot:
         
     def get_relevant_schema(self, query):
         """Get relevant schema information based on the query"""
-        results = self.schema_manager.similarity_search(query, k=3)
-        schema_info = "\n".join([doc['content'] for doc in results])
+        # Get both similar tables and direct matches
+        table_matches = self.schema_manager.semantic_table_search(query, min_score=0.6)
+        direct_matches = self.schema_manager.similarity_search(query, k=3, threshold=0.5)
+        
+        # Combine and deduplicate results
+        schema_info = []
+        seen_tables = set()
+        
+        # Add table matches first
+        for match in table_matches:
+            if match['table'] not in seen_tables:
+                schema_info.append(match['description'])
+                seen_tables.add(match['table'])
+        
+        # Add direct matches if they bring new information
+        for match in direct_matches:
+            table = match['metadata']['table']
+            if table not in seen_tables:
+                schema_info.append(match['content'])
+                seen_tables.add(table)
+        
+        schema_text = "\n".join(schema_info)
         
         return f"""IMPORTANT: Below is the exact database schema with correct table and column names.
 Use ONLY these exact names in your query:
 
-{schema_info}
+{schema_text}
 
 IMPORTANT RULES:
 1. Use ONLY the exact table and column names shown above
