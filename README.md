@@ -1,4 +1,4 @@
-I'll help update the README with detailed information about the current state of the project. Here's the revised version:
+Here's an updated version of the README.md that includes the changes made to the `src/chatbot.py` file, specifically regarding the LLM's behavior to return only the SQL query without any additional text or formatting. I've also added a section about the new critical rules for SQL generation.
 
 ```markdown:README.md
 # AI Database Assistant
@@ -20,6 +20,14 @@ A Python-based application that allows natural language interaction with your da
   - Optimized similarity search
   - Batch processing for performance
 - **Security & Validation**: SQL injection prevention and query validation
+
+## Critical Rules for SQL Generation
+
+1. Use ONLY the exact table and column names shown in the schema.
+2. Do not use aliases like 'e' or 'd' unless you define them in proper table aliases.
+3. Every column reference must exactly match a column from the schema.
+4. Do not guess or assume column names - use only what is explicitly shown.
+5. If you can't find an exact column or join path in the schema, respond with 'INVALID_QUERY'.
 
 ## Prerequisites
 
@@ -44,6 +52,9 @@ A Python-based application that allows natural language interaction with your da
    GOOGLE_API_KEY=your_google_api_key
    SAMBANOVA_API_KEY=your_sambanova_api_key
    DATABASE_URL=mysql+mysqlconnector://username:password@localhost:3306/database_name
+   TRANSFORMERS_OFFLINE=1
+   SENTENCE_TRANSFORMERS_HOME=./models
+   HF_DATASETS_OFFLINE=1
    ```
 
 ## Project Structure
@@ -63,7 +74,7 @@ project/
 │   └── metadata.json     # Table metadata
 ├── models/              # Local model storage
 ├── requirements.txt     # Dependencies
-└── .env                # Configuration
+└── .env                 # Configuration
 ```
 
 ## Usage

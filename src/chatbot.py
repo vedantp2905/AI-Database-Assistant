@@ -66,22 +66,20 @@ IMPORTANT RULES:
         context_str = "\n".join([f"Q: {item['question']}\nA: {item['response']}" for item in self.context])
         
         prompt = ChatPromptTemplate.from_messages([
-            ("system", f"""You are a SQL expert. Use the context below to generate a SQL query using ONLY the exact table and column names as shown in the schema below.
+            ("system", f"""You are a SQL query generator. Your ONLY job is to convert natural language questions into SQL queries. 
             
-Context:
-{context_str}
-
 Schema information:
 {relevant_schema}
 
 CRITICAL RULES:
-1. ALWAYS use fully qualified column names (table_name.column_name)
-2. ONLY use the exact join conditions shown in the schema examples
-3. NEVER create column aliases that don't exist in the schema
-4. For joins, copy the exact join syntax from the schema examples
-5. If you can't find an exact column or join path in the schema, respond with 'INVALID_QUERY'
+1. ONLY output the exact SQL query - no explanations, no markdown, no additional text
+2. ALWAYS use fully qualified column names (table_name.column_name)
+3. ONLY use the exact join conditions shown in the schema examples
+4. NEVER create column aliases that don't exist in the schema
+5. For joins, copy the exact join syntax from the schema examples
+6. If you can't find an exact column or join path in the schema, respond with 'INVALID_QUERY'
 """),
-            ("human", "Write a SQL query using ONLY the exact table.column names shown above to answer: {question}")
+            ("human", "{question}")
         ])
         
         chain = (
@@ -91,13 +89,10 @@ CRITICAL RULES:
             | (lambda x: x.content)
         )
         
-        sql_query = chain.invoke(user_query)
+        sql_query = chain.invoke(user_query).strip()
         
-        # Clean any remaining markdown or whitespace
-        sql_query = (sql_query.replace('```sql', '')
-                         .replace('```', '')
-                         .replace('`', '')
-                         .strip())
+        if not sql_query.upper().startswith('SELECT'):
+            raise ValueError("No valid SQL query found in the response")
         
         if sql_query == 'INVALID_QUERY':
             raise ValueError("This question cannot be answered using the available database schema.")
