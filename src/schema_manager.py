@@ -8,8 +8,9 @@ from typing import List, Dict
 from numpy.linalg import norm
 
 class SchemaManager:
-    def __init__(self, db_url, vector_store_path="./vector_store", model_path="./models"):
-        self.db_url = db_url
+    def __init__(self, db_url: str, schema_name: str = None, vector_store_path="./vector_store", model_path="./models"):
+        self.db_url = db_url.rstrip('/')  # Remove trailing slash if present
+        self.schema_name = schema_name
         self.model_path = model_path
         self.vector_store_path = vector_store_path
         os.makedirs(self.vector_store_path, exist_ok=True)
@@ -56,14 +57,29 @@ class SchemaManager:
 
         try:
             # Create SQLAlchemy engine using the provided database URL
-            connect_args = {
-                'connect_timeout': 30,
-                'pool_recycle': 3600
-            }
+            connect_args = {}
+            
+            # Add MySQL-specific connection arguments if using mysql connector
+            if 'mysql' in self.db_url.lower():
+                connect_args = {
+                    'pool_recycle': 3600,
+                    'pool_timeout': 30,
+                    'pool_pre_ping': True
+                }
+            
+            if schema_name:
+                # Properly construct the database URL with schema
+                if '?' in self.db_url:
+                    base_url, params = self.db_url.split('?')
+                    self.engine_url = f"{base_url}/{schema_name}?{params}"
+                else:
+                    self.engine_url = f"{self.db_url}/{schema_name}"
+            else:
+                self.engine_url = self.db_url
             
             self.engine = create_engine(
-                self.db_url,
-                pool_pre_ping=True
+                self.engine_url,
+                **connect_args
             )
             
             # Test connection
@@ -117,17 +133,20 @@ class SchemaManager:
         for table in metadata.tables.values():
             table_info = {
                 "table_name": table.name,
+                "table_description": table.comment,
                 "columns": [
                     {
                         "name": column.name,
                         "type": str(column.type),
                         "primary_key": column.primary_key,
+                        "column_description": column.comment,
                         "foreign_key": {
                             "is_fk": bool(column.foreign_keys),
                             "references": [
                                 {
                                     "table": fk.column.table.name,
-                                    "column": fk.column.name
+                                    "column": fk.column.name,
+                                    "column_description": fk.column.comment
                                 }
                                 for fk in column.foreign_keys
                             ] if column.foreign_keys else []
@@ -183,17 +202,34 @@ class SchemaManager:
         descriptions = []
         
         for table in schema_info:
-            description = f"Table {table['table_name']} contains columns: "
-            column_descriptions = []
+            # Start with table name and its description
+            description = f"Table {table['table_name']}"
+            if table['table_description']:
+                description += f" ({table['table_description']})"
+            description += " contains columns: "
             
+            column_descriptions = []
             for col in table['columns']:
+                # Build column description with type and constraints
                 col_desc = f"{col['name']} ({col['type']})"
+                
+                # Add column description if available
+                if col['column_description']:
+                    col_desc += f" - {col['column_description']}"
+                
+                # Add key information
                 if col['primary_key']:
                     col_desc += " (primary key)"
                 if col['foreign_key']['is_fk']:
                     refs = col['foreign_key']['references']
-                    ref_desc = ", ".join([f"{r['table']}.{r['column']}" for r in refs])
-                    col_desc += f" (foreign key referencing {ref_desc})"
+                    ref_descriptions = []
+                    for r in refs:
+                        ref_desc = f"{r['table']}.{r['column']}"
+                        if r['column_description']:  # Add foreign key column description
+                            ref_desc += f" ({r['column_description']})"
+                        ref_descriptions.append(ref_desc)
+                    col_desc += f" (foreign key referencing {', '.join(ref_descriptions)})"
+                
                 column_descriptions.append(col_desc)
             
             description += ", ".join(column_descriptions)
@@ -204,10 +240,10 @@ class SchemaManager:
         # Batch encode all descriptions at once
         self.schema_embeddings = self.model.encode(
             descriptions,
-            batch_size=32,  # Adjust based on your GPU/CPU
+            batch_size=32,
             show_progress_bar=True,
             convert_to_numpy=True,
-            normalize_embeddings=True  # Pre-normalize embeddings
+            normalize_embeddings=True
         )
         
         # Update normalized embeddings cache
@@ -256,3 +292,14 @@ class SchemaManager:
             return True
         except Exception:
             return False
+
+    def get_available_schemas(self):
+        """Get list of available schemas from database"""
+        try:
+            with self.engine.connect() as conn:
+                result = conn.execute(text("SHOW DATABASES"))
+                schemas = [row[0] for row in result]
+                return [schema for schema in schemas if schema not in ['information_schema', 'mysql', 'performance_schema', 'sys']]
+        except Exception as e:
+            logging.error(f"Failed to get schemas: {str(e)}")
+            return []
