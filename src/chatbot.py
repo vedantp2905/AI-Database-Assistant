@@ -50,9 +50,11 @@ Use ONLY these exact names in your query:
 
 IMPORTANT RULES:
 1. Use ONLY the exact table and column names shown above
-2. Do not use aliases like 'e' or 'd' unless you define them in proper table aliases
-3. Every column reference must exactly match a column from the schema
-4. Do not guess or assume column names - use only what is explicitly shown"""
+2. Do not use aliases like 'e' or 'd'. Use the exact column names from the schema
+3. Only use columns that are in the schema
+4. For joins, use the exact join syntax from the schema examples   
+5. Every column reference must exactly match a column from the schema
+6. Do not guess or assume column names - use only what is explicitly shown"""
     
     def generate_sql(self, user_query):
         """Generate SQL query from natural language"""

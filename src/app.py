@@ -12,7 +12,6 @@ import time
 import plotly.express as px
 from streamlit_lottie import st_lottie
 import requests
-import json
 
 # Custom CSS for better styling
 def load_css():
