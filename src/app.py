@@ -8,10 +8,10 @@ from dotenv import load_dotenv
 from schema_manager import SchemaManager
 from chatbot import DBChatbot
 import pandas as pd
-import time
 import plotly.express as px
 from streamlit_lottie import st_lottie
 import requests
+import sys
 
 # Custom CSS for better styling
 def load_css():
@@ -150,6 +150,40 @@ def load_css():
         [data-testid="stSidebar"] button:hover {
             background-color: #f0f0f0;
         }
+        
+        .schema-card {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 1.5rem 1.5rem 0.5rem 1.5rem;  /* Reduced bottom padding */
+            text-align: center;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-bottom: 0.5rem;  /* Add space for button */
+        }
+        
+        .schema-card h3 {
+            margin: 0 0 1rem 0;  /* Add bottom margin to schema name */
+            color: #1a1a1a;
+        }
+        
+        /* Style for the Connect button */
+        [data-testid="stButton"] {
+            margin-top: -0.5rem;  /* Pull button up closer to card */
+        }
+        
+        [data-testid="stButton"] button {
+            background-color: #4CAF50 !important;
+            color: white !important;
+            border: none !important;
+            padding: 0.5rem 1rem !important;
+            border-radius: 4px !important;
+            width: calc(100% - 3rem);  /* Match card width */
+            margin: 0 1.5rem;  /* Center button under card */
+        }
+        
+        [data-testid="stButton"] button:hover {
+            background-color: #45a049 !important;
+        }
         </style>
     """, unsafe_allow_html=True)
 
@@ -162,29 +196,154 @@ def load_lottie_url(url: str):
 def initialize_session_state():
     if 'chat_history' not in st.session_state:
         st.session_state.chat_history = []
-    if 'chatbot' not in st.session_state:
+    
+    if 'base_schema_manager' not in st.session_state:
         load_dotenv()
+        db_url = os.getenv("DATABASE_CONNECTION_URL")
+        st.session_state.base_schema_manager = SchemaManager(db_url)
+    
+    # Add schema selection if not already set
+    if 'schema_name' not in st.session_state:
+        available_schemas = st.session_state.base_schema_manager.get_available_schemas()
         
-        # Add model selection in sidebar
-        with st.sidebar:
-            llm_provider = st.selectbox(
-                "Select LLM Provider",
-                ["sambanova", "gemini"],
-                help="SambaNova (faster) or Google's Gemini"
+        # Create a centered container with max-width
+        st.markdown("""
+            <style>
+            .welcome-container {
+                max-width: 800px;
+                margin: 0 auto;
+                padding: 2rem;
+                text-align: center;
+            }
+            .schema-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+                gap: 1rem;
+                margin-top: 2rem;
+            }
+            .schema-card {
+                background: #f8f9fa;
+                border: 1px solid #e9ecef;
+                border-radius: 8px;
+                padding: 1.5rem;
+                text-align: center;
+                transition: transform 0.2s, box-shadow 0.2s;
+                cursor: pointer;
+            }
+            .schema-card:hover {
+                transform: translateY(-5px);
+                box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            }
+            .schema-card h3 {
+                margin: 0;
+                color: #1a1a1a;
+            }
+            /* Style for the Connect button */
+            [data-testid="stButton"] button {
+                background-color: #4CAF50 !important;
+                color: white !important;
+                border: none !important;
+                padding: 0.5rem 1rem !important;
+                border-radius: 4px !important;
+            }
+            [data-testid="stButton"] button:hover {
+                background-color: #45a049 !important;
+            }
+            .create-new-link {
+                display: inline-block;
+                margin-top: 2rem;
+                padding: 1rem 2rem;
+                background-color: #007bff;
+                color: white !important;
+                text-decoration: none;
+                border-radius: 8px;
+                transition: background-color 0.2s;
+            }
+            .create-new-link:hover {
+                background-color: #0056b3;
+                text-decoration: none;
+                color: white !important;
+            }
+            /* Make all text in create-new-link white */
+            .create-new-link * {
+                color: white !important;
+            }
+            </style>
+            <div class="welcome-container">
+                <h1>🗄️ Database Chat Assistant</h1>
+                <p>Connect to an existing database or create a new one to get started.</p>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        if available_schemas:
+            st.markdown('<div class="schema-grid">', unsafe_allow_html=True)
+            
+            # Create a column for each schema
+            cols = st.columns(min(3, len(available_schemas)))
+            for idx, schema in enumerate(available_schemas):
+                col = cols[idx % 3]
+                with col:
+                    st.markdown(f"""
+                        <div class="schema-card">
+                            <h3>📁 {schema}</h3>
+                        </div>
+                    """, unsafe_allow_html=True)
+                    
+                    if st.button(f"Connect", key=f"connect_{schema}", type="primary"):
+                        st.session_state.schema_name = schema
+                        with st.spinner('Initializing chatbot...'):
+                            schema_manager = SchemaManager(
+                                db_url=os.getenv("DATABASE_CONNECTION_URL"),
+                                schema_name=schema
+                            )
+                            
+                            if not schema_manager.embeddings_exist():
+                                with st.spinner('Generating schema embeddings...'):
+                                    schema_manager.update_vector_store()
+                            
+                            llm_provider = st.sidebar.selectbox(
+                                "Select LLM Provider",
+                                ["sambanova", "gemini"],
+                                help="SambaNova (faster) or Google's Gemini"
+                            )
+                            st.session_state.chatbot = DBChatbot(schema_manager, llm_provider)
+                            st.session_state.schema_info = schema_manager.get_schema_info()
+                            st.rerun()
+            
+            st.markdown('</div>', unsafe_allow_html=True)
+            
+            # Remove the hidden selectbox and connect button
+        
+        # Update link color in the create new section
+        st.markdown("""
+            <div class="welcome-container">
+                <p>Don't see your database?</p>
+                <a href="http://localhost:8501" target="_blank" class="create-new-link" style="color: white !important;">
+                    🏗️ Create New Database
+                </a>
+            </div>
+        """, unsafe_allow_html=True)
+        return
+    
+    # Initialize other session state variables if schema is selected
+    if 'chatbot' not in st.session_state and 'schema_name' in st.session_state:
+        with st.spinner('Initializing chatbot...'):
+            schema_manager = SchemaManager(
+                db_url=os.getenv("DATABASE_CONNECTION_URL"),
+                schema_name=st.session_state.schema_name
             )
             
-        with st.spinner('Initializing chatbot...'):
-            db_url = os.getenv("DATABASE_URL")
-            schema_manager = SchemaManager(db_url)
-            
-            # Only update vector store if embeddings don't exist
             if not schema_manager.embeddings_exist():
                 with st.spinner('Generating schema embeddings...'):
                     schema_manager.update_vector_store()
             
+            llm_provider = st.sidebar.selectbox(
+                "Select LLM Provider",
+                ["sambanova", "gemini"],
+                help="SambaNova (faster) or Google's Gemini"
+            )
             st.session_state.chatbot = DBChatbot(schema_manager, llm_provider)
-    if 'schema_info' not in st.session_state:
-        st.session_state.schema_info = st.session_state.chatbot.schema_manager.get_schema_info()
+            st.session_state.schema_info = schema_manager.get_schema_info()
 
 def display_chat_history():
     for i, message in enumerate(st.session_state.chat_history):
@@ -261,6 +420,11 @@ def display_schema_viewer():
             st.markdown("</div></div>", unsafe_allow_html=True)
 
 def main():
+    # Get schema from command line arguments
+    
+    if '--server.port' not in sys.argv:
+        sys.argv.extend(['--server.port', '8502'])
+    
     st.set_page_config(
         page_title="Chat with Your Database",
         page_icon="🗄️",
@@ -270,6 +434,13 @@ def main():
     
     load_css()
     
+    # Initialize session state first
+    initialize_session_state()
+    
+    # Only show main interface if schema is selected
+    if 'schema_name' not in st.session_state:
+        return
+        
     # Load and display animation
     lottie_url = "https://assets5.lottiefiles.com/packages/lf20_qp1q7mct.json"
     lottie_json = load_lottie_url(lottie_url)
@@ -282,8 +453,6 @@ def main():
             st_lottie(lottie_json, height=100, key="database_animation")
     
     warnings.filterwarnings('ignore', category=UserWarning, module='torch')
-    
-    initialize_session_state()
     
     # Sidebar with information and features
     with st.sidebar:

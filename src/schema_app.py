@@ -4,15 +4,11 @@ from dotenv import load_dotenv
 from schema_manager import SchemaManager
 from schema_designer import SchemaDesigner
 from schema_assistant import SchemaAssistant
-import plotly.express as px
-from streamlit_lottie import st_lottie
 import requests
 from sqlalchemy import text
 import pandas as pd
-import re
-import subprocess
-from pathlib import Path
-import graphviz
+import time
+import tempfile
 
 def load_lottie_url(url: str):
     r = requests.get(url)
@@ -34,12 +30,63 @@ def load_css():
             color: #ffffff;
         }
         
+        .welcome-container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 2rem;
+            text-align: center;
+        }
+        
+        .schema-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+            margin-top: 2rem;
+        }
+        
         .schema-card {
-            background-color: #ffffff;
-            padding: 1.5rem;
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
             border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            margin-bottom: 1rem;
+            padding: 1.5rem 1.5rem 0.5rem 1.5rem;
+            text-align: center;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-bottom: 0.5rem;
+        }
+        
+        .schema-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        
+        .schema-card h3 {
+            margin: 0 0 1rem 0;
+            color: #1a1a1a;
+        }
+        
+        [data-testid="stButton"] button {
+            background-color: #4CAF50 !important;
+            color: white !important;
+            border: none !important;
+            padding: 0.5rem 1rem !important;
+            border-radius: 4px !important;
+            width: calc(100% - 3rem);
+            margin: 0 1.5rem;
+        }
+        
+        [data-testid="stButton"] button:hover {
+            background-color: #45a049 !important;
+        }
+        
+        .create-new-section {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 1.5rem;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
         }
         
         .table-header {
@@ -79,6 +126,153 @@ def load_css():
             border-radius: 4px;
             margin: 1rem 0;
         }
+        
+        .split-view {
+            display: flex;
+            gap: 2rem;
+        }
+        
+        .split-view-left {
+            flex: 1;
+            min-width: 0;
+            padding-right: 1rem;
+            border-right: 1px solid #e0e0e0;
+        }
+        
+        .split-view-right {
+            flex: 1;
+            min-width: 0;
+            padding-left: 1rem;
+        }
+        
+        .schema-viewer {
+            position: sticky;
+            top: 3rem;
+            max-height: calc(100vh - 6rem);
+            overflow-y: auto;
+        }
+        
+        /* New styles for builder page */
+        .builder-header {
+            background: linear-gradient(90deg, #1a1a1a 0%, #2d2d2d 100%);
+            color: white;
+            padding: 2rem;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+        
+        .danger-button button {
+            background-color: #dc3545 !important;
+            color: white !important;
+            border: none !important;
+            padding: 0.5rem 1rem !important;
+            border-radius: 4px !important;
+            width: 100% !important;
+            margin: 0 !important;
+        }
+        
+        .danger-button button:hover {
+            background-color: #c82333 !important;
+            color: white !important;
+        }
+        
+        .danger-button button:active, 
+        .danger-button button:focus {
+            background-color: #bd2130 !important;
+            color: white !important;
+        }
+        
+        .assistant-input {
+            background: #f8f9fa;
+            padding: 2rem;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+        }
+        
+        .schema-history {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+            margin-top: 2rem;
+        }
+        
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+            margin: 2rem 0;
+        }
+        
+        .feature-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+            text-align: center;
+        }
+        
+        .feature-card i {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+            color: #4CAF50;
+        }
+        
+        /* Override Streamlit's default button styling with !important */
+        div[data-testid="stHorizontalBlock"] div.danger-button button,
+        div[data-testid="stHorizontalBlock"] div.danger-button button[kind="secondary"],
+        div.danger-button button[kind="secondary"],
+        .danger-button button {
+            background-color: #dc3545 !important;
+            color: white !important;
+            border: none !important;
+            padding: 0.5rem 1rem !important;
+            border-radius: 4px !important;
+            width: 100% !important;
+            margin: 0 !important;
+        }
+        
+        /* Override hover state */
+        div[data-testid="stHorizontalBlock"] div.danger-button button:hover,
+        div[data-testid="stHorizontalBlock"] div.danger-button button[kind="secondary"]:hover,
+        div.danger-button button[kind="secondary"]:hover,
+        .danger-button button:hover {
+            background-color: #c82333 !important;
+            color: white !important;
+            border-color: #bd2130 !important;
+        }
+        
+        /* Override active/focus state */
+        div[data-testid="stHorizontalBlock"] div.danger-button button:active,
+        div[data-testid="stHorizontalBlock"] div.danger-button button:focus,
+        div.danger-button button[kind="secondary"]:active,
+        div.danger-button button[kind="secondary"]:focus,
+        .danger-button button:active,
+        .danger-button button:focus {
+            background-color: #bd2130 !important;
+            color: white !important;
+            border-color: #b21f2d !important;
+        }
+        
+        /* Query interface link styling */
+        .query-link {
+            display: inline-block;
+            padding: 1rem 2rem;
+            background-color: #4CAF50;
+            color: white !important;
+            text-decoration: none;
+            border-radius: 4px;
+            margin: 1rem 0;
+            text-align: center;
+            font-weight: bold;
+            transition: background-color 0.2s;
+        }
+        
+        .query-link:hover {
+            background-color: #45a049;
+            text-decoration: none;
+        }
         </style>
     """, unsafe_allow_html=True)
 
@@ -103,8 +297,11 @@ def initialize_session_state():
             st.session_state.designer = SchemaDesigner(
                 db_url=st.session_state.schema_manager.engine_url
             )
+            
+            # Initialize SchemaAssistant with schema name
             st.session_state.assistant = SchemaAssistant(
-                db_url=st.session_state.schema_manager.engine_url
+                db_url=st.session_state.schema_manager.engine_url,
+                schema_name=schema_name
             )
             return True
             
@@ -131,6 +328,10 @@ def get_schema_erd():
         import mysql.connector
         from graphviz import Digraph
         from urllib.parse import urlparse
+        
+        # Use system temp directory instead of local folder
+        temp_dir = tempfile.gettempdir()
+        output_file = os.path.join(temp_dir, f"{st.session_state.schema_name}_erd")
         
         # Parse database URL for connection
         db_url = os.getenv("DATABASE_CONNECTION_URL")
@@ -165,10 +366,10 @@ def get_schema_erd():
         dot = Digraph("ERD", format="png")
         dot.attr(
             rankdir="LR",
-            splines="ortho",  # Orthogonal lines for cleaner look
-            nodesep="0.8",    # Increased space between nodes
-            ranksep="1.0",    # Increased rank separation
-            concentrate="true" # Merge edges for cleaner diagram
+            splines="polyline",  # Changed from ortho to polyline for better label handling
+            nodesep="1.0",    # Increased node separation
+            ranksep="1.5",    # Increased rank separation
+            concentrate="false" # Disabled edge concentration for clearer labels
         )
         
         # Set global graph attributes for better quality
@@ -215,7 +416,7 @@ def get_schema_erd():
             
             dot.node(table, label=label)
 
-        # Add relationships with improved styling
+        # Add relationships with improved styling and xlabel
         for table, column, ref_table, ref_column in relationships:
             dot.edge(
                 f"{table}:{column}:e",
@@ -224,14 +425,9 @@ def get_schema_erd():
                 arrowtail="none",
                 color="#2196F3",
                 penwidth="1.5",
-                label=f" {column} → {ref_column} "
+                xlabel=f"{column} → {ref_column}"  # Changed from label to xlabel
             )
 
-        # Create temporary directory and render with high quality settings
-        temp_dir = "temp_erd"
-        os.makedirs(temp_dir, exist_ok=True)
-        output_file = os.path.join(temp_dir, f"{st.session_state.schema_name}_erd")
-        
         # Render with higher DPI and better quality settings
         dot.render(output_file, cleanup=True, format="png")
         cursor.close()
@@ -242,77 +438,267 @@ def get_schema_erd():
         return None, f"Failed to generate ERD: {str(e)}"
 
 def display_schema_viewer():
-    st.header("Schema Viewer")
-    
-    # Add tabs for different views
-    tab1, tab2 = st.tabs(["Table Details", "Entity Relationship Diagram"])
-    
-    with tab1:
-        schema_info = st.session_state.schema_manager.get_schema_info()
-        # Table details code remains the same
-        for table in schema_info:
-            with st.expander(f"📋 {table['table_name']}", expanded=False):
-                columns = []
-                for col in table['columns']:
-                    col_type = col['type']
-                    attributes = []
-                    if col.get('primary_key'):
-                        attributes.append('🔑 PK')
-                    if col.get('foreign_key', {}).get('is_fk'):
-                        attributes.append('🔗 FK')
-                    if not col.get('nullable', True):
-                        attributes.append('Required')
-                    
-                    columns.append({
-                        'Column': col['name'],
-                        'Type': col_type,
-                        'Attributes': ' | '.join(attributes) if attributes else ''
-                    })
-                
-                df = pd.DataFrame(columns)
-                st.dataframe(
-                    df,
-                    hide_index=True,
+    """Display schema structure and ERD"""
+    # ERD Section first
+    st.subheader("Entity Relationship Diagram")
+    with st.spinner("Generating Entity Relationship Diagram..."):
+        erd_path, error = get_schema_erd()
+        if erd_path:
+            # Create three columns to center the image
+            left_col, center_col, right_col = st.columns([1, 2, 1])
+            
+            with center_col:
+                st.image(erd_path, width=800)
+                st.download_button(
+                    label="Download ERD",
+                    data=open(erd_path, "rb").read(),
+                    file_name=f"{st.session_state.schema_name}_erd.png",
+                    mime="image/png",
                     use_container_width=True
                 )
+        else:
+            st.error(f"Failed to generate ERD: {error}")
     
-    with tab2:
-        with st.spinner("Generating Entity Relationship Diagram..."):
+    st.divider()
+    
+    # Table details
+    schema_info = st.session_state.schema_manager.get_schema_info()
+    for table in schema_info:
+        with st.expander(f"📋 {table['table_name']}", expanded=False):
+            columns = []
+            for col in table['columns']:
+                col_type = col['type']
+                attributes = []
+                if col.get('primary_key'):
+                    attributes.append('🔑 PK')
+                if col.get('foreign_key', {}).get('is_fk'):
+                    attributes.append('🔗 FK')
+                if not col.get('nullable', True):
+                    attributes.append('Required')
+                
+                columns.append({
+                    'Column': col['name'],
+                    'Type': col_type,
+                    'Attributes': ' | '.join(attributes) if attributes else ''
+                })
+            
+            df = pd.DataFrame(columns)
+            st.dataframe(
+                df,
+                hide_index=True,
+                use_container_width=True
+            )
+
+def display_schema_history():
+    """Display schema modification history"""
+    try:
+        history = st.session_state.assistant.get_history()
+        
+        for entry in history:
+            with st.chat_message(entry["role"]):
+                if entry["role"] == "assistant" and "sql" in entry:
+                    st.write("Successfully executed SQL:")
+                    st.code(entry["sql"], language="sql")
+                else:
+                    st.write(entry["content"])
+                
+                st.caption(f"Time: {entry['timestamp']}")
+    except Exception as e:
+        st.error(f"Error displaying history: {str(e)}")
+
+def schema_assistant_tab():
+    # Welcome header
+    st.markdown("""
+        <div class="builder-header">
+            <h1>🏗️ Database Builder</h1>
+            <p>Design and modify your database schema using natural language</p>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    # Feature cards
+    st.markdown("""
+        <div class="feature-grid">
+            <div class="feature-card">
+                <div>🏗️ Create Your Database</div>
+                <p>Design new tables with custom columns and relationships</p>
+            </div>
+            <div class="feature-card">
+                <div>🔄 Modify Your Database</div>
+                <p>Add, modify, or remove columns and tables</p>
+            </div>
+            <div class="feature-card">
+                <div>🔗 No knowledge of SQL</div>
+                <p>No need to know SQL, just use natural language</p>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    # Create two columns for the main content
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        # Input area - removed the assistant-input div wrapper
+        if "schema_input" not in st.session_state:
+            st.session_state.schema_input = ""
+        
+        user_input = st.text_area(
+            "What would you like to do with the schema?", 
+            value=st.session_state.schema_input,
+            placeholder="e.g., Create a new users table with email and password columns",
+            height=100,
+            key="schema_input"
+        )
+        
+        if st.button("🚀 Execute Changes", type="primary", use_container_width=True):
+            with st.spinner("Processing..."):
+                result = st.session_state.assistant.process_command(user_input)
+                if result['success']:
+                    st.success("Successfully executed SQL")
+                    st.code(result['sql'], language='sql')
+                    time.sleep(0.5)
+                    st.rerun()
+                else:
+                    st.error(result['error'])
+        
+        # History section
+        st.markdown('<div class="schema-history">', unsafe_allow_html=True)
+        st.markdown("### 📝 Schema Modification History")
+        display_schema_history()
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    with col2:
+        # Current schema viewer
+        display_current_schema()
+
+def display_current_schema():
+    """Helper function to display current schema state"""
+    if 'schema_manager' not in st.session_state:
+        return
+        
+    # Table details
+    schema_info = st.session_state.schema_manager.get_schema_info()
+    for table in schema_info:
+        with st.expander(f"📋 {table['table_name']}", expanded=True):
+            columns = []
+            for col in table['columns']:
+                col_type = col['type']
+                attributes = []
+                if col.get('primary_key'):
+                    attributes.append('🔑 PK')
+                if col.get('foreign_key', {}).get('is_fk'):
+                    attributes.append('🔗 FK')
+                if not col.get('nullable', True):
+                    attributes.append('Required')
+                
+                columns.append({
+                    'Column': col['name'],
+                    'Type': col_type,
+                    'Attributes': ' | '.join(attributes) if attributes else ''
+                })
+            
+            df = pd.DataFrame(columns)
+            st.dataframe(
+                df,
+                hide_index=True,
+                use_container_width=True
+            )
+    
+    # ERD Section
+    with st.expander("Entity Relationship Diagram", expanded=True):
+        with st.spinner("Generating ERD..."):
             erd_path, error = get_schema_erd()
             if erd_path:
-                # Create three columns to center the image
-                left_col, center_col, right_col = st.columns([1, 2, 1])
-                
-                with center_col:
-                    st.image(erd_path, width=800)
-                    st.download_button(
-                        label="Download ERD",
-                        data=open(erd_path, "rb").read(),
-                        file_name=f"{st.session_state.schema_name}_erd.png",
-                        mime="image/png",
-                        use_container_width=True
-                    )
+                st.image(erd_path, use_container_width=True)
             else:
                 st.error(f"Failed to generate ERD: {error}")
 
-def schema_assistant_tab():
-    st.header("Schema Assistant")
+def delete_current_schema():
+    """Delete current schema and clean up resources"""
+    try:
+        schema_name = st.session_state.schema_name
+        
+        # Delete the schema from database
+        with st.session_state.base_schema_manager.engine.connect() as conn:
+            conn.execute(text(f"DROP SCHEMA IF EXISTS {schema_name}"))
+            conn.commit()
+        
+        # Delete history file
+        if 'assistant' in st.session_state:
+            st.session_state.assistant.cleanup()
+        
+        # Clear session state
+        for key in ['schema_name', 'schema_manager', 'designer', 'assistant']:
+            if key in st.session_state:
+                del st.session_state[key]
+        
+        st.rerun()
+        
+    except Exception as e:
+        st.error(f"Failed to delete database: {str(e)}")
+
+def query_database_tab():
+    # Welcome header
+    st.markdown("""
+        <div class="builder-header">
+            <h1>🔍 Query Database</h1>
+            <p>Explore and analyze your data using natural language</p>
+        </div>
+    """, unsafe_allow_html=True)
     
-    user_input = st.text_area(
-        "What would you like to do with the schema?", 
-        placeholder="e.g., Create a new users table with email and password columns"
-    )
+    # Feature cards
+    st.markdown("""
+        <div class="feature-grid">
+            <div class="feature-card">
+                <div>💬 Natural Language</div>
+                <p>Ask questions in plain English - no SQL needed</p>
+            </div>
+            <div class="feature-card">
+                <div>📊 Data Visualization</div>
+                <p>Automatic charts and graphs for your data</p>
+            </div>
+            <div class="feature-card">
+                <div>🔍 Smart Search</div>
+                <p>Context-aware queries across your schema</p>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
     
-    if st.button("Execute"):
-        with st.spinner("Processing..."):
-            result = st.session_state.assistant.process_command(user_input)
-            if result['success']:
-                st.success(result['message'])
-                st.code(result['sql'], language='sql')
-            else:
-                st.error(result['error'])
+    # Main content
+    st.markdown("""
+        <div class="assistant-input">
+            <h3>🚀 Launch Query Interface</h3>
+            <p>Start exploring your data with our interactive query interface:</p>
+            <ul>
+                <li>Ask questions in natural language</li>
+                <li>Get instant SQL translations</li>
+                <li>View data visualizations</li>
+                <li>Explore your database schema</li>
+            </ul>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    if st.button("🚀 Launch Query Interface", type="primary", use_container_width=True):
+        try:
+            st.success("Query interface launched!")
+            st.markdown("""
+                <div class="schema-history">
+                    <h3>🔗 Access Your Query Interface</h3>
+                    <p>Your query interface is ready! Click the button below to start exploring:</p>
+                    <a href="http://localhost:8502" target="_blank" class="query-link">
+                        🚀 Open Query Interface
+                    </a>
+                </div>
+            """, unsafe_allow_html=True)
+            
+        except Exception as e:
+            st.error(f"Failed to launch query interface: {str(e)}")
 
 def main():
+    # Add these lines at the start of main()
+    import sys
+    if '--server.port' not in sys.argv:
+        sys.argv.extend(['--server.port', '8501'])
+    
     st.set_page_config(
         page_title="Database Schema Manager",
         page_icon="🗃️",
@@ -330,98 +716,114 @@ def main():
     
     # Add schema selection if not already set
     if 'schema_name' not in st.session_state:
-        st.title("Welcome to Schema Manager")
+        st.markdown("""
+            <div class="welcome-container">
+                <h1>🏗️ Welcome to Schema Builder</h1>
+                <p>Connect to an existing database or create a new one to get started.</p>
+            </div>
+        """, unsafe_allow_html=True)
         
         # Get available schemas
         available_schemas = st.session_state.base_schema_manager.get_available_schemas()
         
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.subheader("Select Existing Database")
-            if available_schemas:
-                selected_schema = st.selectbox(
-                    "Choose an existing database:",
-                    available_schemas,
-                    index=None,
-                    placeholder="Select a database..."
-                )
-                if selected_schema and st.button("Connect to Database"):
-                    st.session_state.schema_name = selected_schema
-                    if initialize_session_state():
-                        st.rerun()
-        
-        with col2:
-            st.subheader("Create New Database")
-            new_schema_name = st.text_input(
-                "Enter a name for your new Database:",
-                placeholder="e.g., my_new_database"
-            )
-            if new_schema_name:
-                # Check if schema already exists
-                if new_schema_name in available_schemas:
-                    st.error(f"Database '{new_schema_name}' already exists. Please choose a different name.")
-                elif st.button("Create Database"):
-                    try:
-                        with st.session_state.base_schema_manager.engine.connect() as conn:
-                            conn.execute(text(f"CREATE DATABASE IF NOT EXISTS {new_schema_name}"))
-                        st.session_state.schema_name = new_schema_name
+        if available_schemas:
+            # Create a 3-column layout with 2:2:1 ratio
+            col1, col2, col3 = st.columns([2, 2, 1.5])
+            
+            # Split schemas into two groups for the first two columns
+            mid_point = (len(available_schemas) + 1) // 2
+            first_half = available_schemas[:mid_point]
+            second_half = available_schemas[mid_point:]
+            
+            # First column of schemas
+            with col1:
+                for schema in first_half:
+                    st.markdown(f"""
+                        <div class="schema-card">
+                            <h3>📁 {schema}</h3>
+                        </div>
+                    """, unsafe_allow_html=True)
+                    if st.button("Connect", key=f"connect_{schema}", type="primary"):
+                        st.session_state.schema_name = schema
                         if initialize_session_state():
-                            st.success(f"Database '{new_schema_name}' created successfully!")
                             st.rerun()
-                    except Exception as e:
-                        st.error(f"Failed to create database: {str(e)}")
+            
+            # Second column of schemas
+            with col2:
+                for schema in second_half:
+                    st.markdown(f"""
+                        <div class="schema-card">
+                            <h3>📁 {schema}</h3>
+                        </div>
+                    """, unsafe_allow_html=True)
+                    if st.button("Connect", key=f"connect_{schema}_2", type="primary"):
+                        st.session_state.schema_name = schema
+                        if initialize_session_state():
+                            st.rerun()
+            
+            # Create new database section in third column
+            with col3:
+                st.markdown("""
+                    <div class="create-new-section">
+                        <h2>Create New Database</h2>
+                        <p>Create a new database below</p>
+                    </div>
+                """, unsafe_allow_html=True)
+                
+                new_schema_name = st.text_input(
+                    "Database name:",
+                    placeholder="e.g., my_new_database"
+                )
+                
+                if new_schema_name:
+                    if new_schema_name in available_schemas:
+                        st.error(f"Database '{new_schema_name}' already exists.")
+                    elif st.button("Create Database", type="primary"):
+                        try:
+                            with st.session_state.base_schema_manager.engine.connect() as conn:
+                                conn.execute(text(f"CREATE DATABASE IF NOT EXISTS {new_schema_name}"))
+                            st.session_state.schema_name = new_schema_name
+                            if initialize_session_state():
+                                st.success(f"Database '{new_schema_name}' created successfully!")
+                                st.rerun()
+                        except Exception as e:
+                            st.error(f"Failed to create database: {str(e)}")
     else:
         # Main application UI after schema is selected
         st.title(f"Schema Manager - {st.session_state.schema_name}")
         
-        # Create tabs for different functionalities
-        tab1, tab2 = st.tabs(["Database Builder", "Database Viewer"])
+        # Add tabs for different functionalities
+        tab1, tab2 = st.tabs(["🛠️ Database Builder", "🔍 Query Database"])
         
         with tab1:
-            st.markdown("""
-            ### 🛠️ Database Builder
+            # Add delete and clear buttons only in builder tab
+            col1, col2, col3 = st.columns([8, 2, 2])
+            with col2:
+                st.markdown('<div class="danger-button">', unsafe_allow_html=True)
+                if st.button("🗑️ Clear History", type="secondary", use_container_width=True):
+                    if 'assistant' in st.session_state:
+                        st.session_state.assistant.history_manager.clear_history()
+                        st.rerun()
+                st.markdown('</div>', unsafe_allow_html=True)
             
-            Use natural language to modify your database structure. You can:
-            - Create new tables with columns
-            - Add or modify columns in existing tables
-            - Set up relationships between tables
-            - Add comments to tables and columns
-            - Rename or drop tables
+            with col3:
+                st.markdown('<div class="danger-button">', unsafe_allow_html=True)
+                if st.button("🗑️ Delete Database", type="secondary", use_container_width=True):
+                    delete_current_schema()
+                st.markdown('</div>', unsafe_allow_html=True)
             
-            Just describe what you want to do in plain English, and I'll help you build it!
-            
-            Example commands:
-            - Creating a database:  To track zoos, animals, staff. staff work at zoos and are assigned to animals. animals can be transferred so need to track which zoo they are at 
-            - Altering a database: Staff will need salary and hours worked
-            - Altering a database: Zoos will need to track the number of animals they have
-            - Truncating a table: Delete all data from the zoos table
-            - Renaming a table: rename the zoos table to zoo_info
-            
-            Limitations:
-            - Cant edit data types as of now
-            """)
             schema_assistant_tab()
         
         with tab2:
-            st.markdown("""
-            ### 📊 Database Viewer
+            # Only show delete database button in query tab
+            col1, col2 = st.columns([10, 2])
+            with col2:
+                st.markdown('<div class="danger-button">', unsafe_allow_html=True)
+                if st.button("🗑️ Delete Database", key="delete_db_query", type="secondary", use_container_width=True):
+                    delete_current_schema()
+                st.markdown('</div>', unsafe_allow_html=True)
             
-            Explore your database structure through different views:
-            
-            **Table Details:**
-            - View all tables and their columns
-            - See data types and constraints
-            - Identify primary keys (🔑) and foreign keys (🔗)
-            - Check column requirements
-            
-            **Entity Relationship Diagram (ERD):**
-            - Visual representation of your database
-            - See relationships between tables
-            - Download the ERD for documentation
-            - Interactive diagram with table details
-            """)
-            display_schema_viewer()
+            query_database_tab()
 
 if __name__ == "__main__":
     main() 

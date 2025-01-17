@@ -4,20 +4,22 @@ from llm_factory import LLMFactory
 import re
 from sqlalchemy.sql import text
 from sqlalchemy import MetaData
+from schema_history import SchemaHistoryManager
 
 class SchemaAssistant:
-    def __init__(self, db_url: str, llm_provider: str = "gemini"):
+    def __init__(self, db_url: str, schema_name: str, llm_provider: str = "gemini"):
         print("[SchemaAssistant] Initializing...")
         self.designer = SchemaDesigner(db_url)
         self.llm = LLMFactory.create_llm(llm_provider)
-        self.chat_history = []
+        self.history_manager = SchemaHistoryManager(schema_name)
         print("[SchemaAssistant] Initialization complete")
     
     def process_command(self, command: str) -> dict:
         """Process a natural language command for schema manipulation"""
-        print(f"\n[SchemaAssistant] Processing command: {command}")
-        
         try:
+            # Add user command to history
+            self.history_manager.add_entry("user", command)
+            
             # Get current schema information
             schema_info = self._get_schema_info()
             
@@ -51,11 +53,17 @@ class SchemaAssistant:
                     name VARCHAR(255) NOT NULL COMMENT 'Person name'
                 ) COMMENT = 'Stores person information';
                 
-                2. ALTER TABLE Persons ADD COLUMN email VARCHAR(255) NOT NULL COMMENT 'Person email';
+                2. CREATE TABLE Orders (
+                    id INT PRIMARY KEY AUTO_INCREMENT COMMENT 'Unique identifier',
+                    person_id INT COMMENT 'Person ID',
+                    FOREIGN KEY (person_id) REFERENCES Persons(id)
+                ) COMMENT = 'Stores order information';
                 
-                3. DROP TABLE Persons;
+                3. ALTER TABLE Persons ADD COLUMN email VARCHAR(255) NOT NULL COMMENT 'Person email';
                 
-                4. COMMENT ON TABLE Persons IS 'Stores person information';
+                4. DROP TABLE Persons;
+                
+                5. COMMENT ON TABLE Persons IS 'Stores person information';
                 
                 5. RENAME TABLE Persons TO People;
                 
@@ -88,11 +96,22 @@ class SchemaAssistant:
                 print("[SchemaAssistant] SQL validation passed")
                 result = self._execute_sql(sql_query)
                 print(f"[SchemaAssistant] Execution result: {result}")
-                return {
-                    "success": True,
-                    "message": "Schema updated successfully",
-                    "sql": sql_query
-                }
+                
+                # Add SQL to result dictionary
+                if result["success"]:
+                    result["sql"] = sql_query
+                    self.history_manager.add_entry(
+                        "assistant",
+                        result["message"],
+                        sql_query  # Pass the SQL query here
+                    )
+                else:
+                    self.history_manager.add_entry(
+                        "assistant",
+                        result["error"]
+                    )
+                
+                return result
             else:
                 print("[SchemaAssistant] SQL validation failed")
                 return {
@@ -102,10 +121,15 @@ class SchemaAssistant:
                 }
                 
         except Exception as e:
-            print(f"[SchemaAssistant] Error: {str(e)}")
+            error_msg = str(e)
+            # Add error response to history
+            self.history_manager.add_entry(
+                "assistant",
+                f"Error: {error_msg}"
+            )
             return {
                 "success": False,
-                "error": str(e)
+                "error": error_msg
             }
     
     def _extract_sql(self, llm_response: str) -> str:
@@ -518,3 +542,15 @@ class SchemaAssistant:
             schema_info.append("\n".join(table_info))
         
         return "\n\n".join(schema_info)
+
+    def get_history(self):
+        """Get schema modification history"""
+        return self.history_manager.get_history()
+
+    def clear_history(self):
+        """Clear schema modification history"""
+        self.history_manager.clear_history()
+
+    def cleanup(self):
+        """Clean up resources when schema is deleted"""
+        return self.history_manager.delete_history_file()
