@@ -12,6 +12,10 @@ import plotly.express as px
 from streamlit_lottie import st_lottie
 import requests
 import sys
+import mysql.connector
+from graphviz import Digraph
+from urllib.parse import urlparse
+import tempfile
 
 # Custom CSS for better styling
 def load_css():
@@ -483,13 +487,30 @@ def main():
     
     # Chat input at the top
     st.markdown('<div class="chat-input-container">', unsafe_allow_html=True)
+    
+    # Schema browser first (collapsed by default)
+    display_schema_viewer()
+    
+    # ERD Section with minimal height
+    st.subheader("Entity Relationship Diagram")
+    with st.spinner("Generating Entity Relationship Diagram..."):
+        erd_path, error = get_schema_erd()
+        if erd_path:
+            # Create columns with wider center for ultra-compact display
+            left_col, center_col, right_col = st.columns([1, 4, 1])
+            with center_col:
+                st.image(erd_path, use_container_width=True)
+        else:
+            st.error(f"Failed to generate ERD: {error}")
+    
+    st.divider()
+    
+    # Chat input and history
     prompt = st.chat_input("Ask a question about your database...")
     st.markdown('</div>', unsafe_allow_html=True)
     
     # Scrollable chat history
     st.markdown('<div class="chat-history-container">', unsafe_allow_html=True)
-    display_schema_viewer()
-    st.markdown("<div class='schema-chat-separator'></div>", unsafe_allow_html=True)
     display_chat_history()
     st.markdown('</div>', unsafe_allow_html=True)
     
@@ -561,6 +582,123 @@ def main():
                         "content": error_message,
                         "data": pd.DataFrame()
                     })
+def get_schema_erd():
+    """Generate minimal, ultra-compact ERD"""
+    try:
+        import mysql.connector
+        from graphviz import Digraph
+        from urllib.parse import urlparse
+        
+        temp_dir = tempfile.gettempdir()
+        output_file = os.path.join(temp_dir, f"{st.session_state.schema_name}_erd")
+        
+        # Parse database URL for connection
+        db_url = os.getenv("DATABASE_CONNECTION_URL")
+        parsed = urlparse(db_url)
+        
+        # Connect to MySQL database
+        conn = mysql.connector.connect(
+            host=parsed.hostname,
+            user=parsed.username,
+            password=parsed.password,
+            database=st.session_state.schema_name,
+            port=parsed.port or 3306
+        )
+        cursor = conn.cursor()
 
+        # Get table columns and relationships
+        cursor.execute("""
+            SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, 
+                   COLUMN_KEY, IS_NULLABLE
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = %s;
+        """, (st.session_state.schema_name,))
+        columns = cursor.fetchall()
+
+        cursor.execute("""
+            SELECT TABLE_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
+            FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+            WHERE TABLE_SCHEMA = %s AND REFERENCED_TABLE_NAME IS NOT NULL;
+        """, (st.session_state.schema_name,))
+        relationships = cursor.fetchall()
+
+        # Generate ultra-compact ERD
+        dot = Digraph("ERD", format="png")
+        dot.attr(
+            rankdir="LR",      # Horizontal layout
+            splines="ortho",   # Orthogonal lines
+            nodesep="0.3",     # Slightly increased for better visibility
+            ranksep="0.5",     # Slightly increased for better visibility
+            concentrate="true", # Merge edges
+            compound="true",   # Allow edge clustering
+            size="8,4",        # Wider ratio to prevent scrolling
+            dpi="300"          # Good balance of quality and size
+        )
+        
+        # Graph attributes
+        dot.attr('graph',
+            fontname="Arial",
+            fontsize="10",     # More readable font size
+            pad="0.2",
+            margin="0.2"
+        )
+        
+        # Node attributes
+        dot.attr('node',
+            fontname="Arial",
+            fontsize="10",     # More readable font size
+            shape="none",
+            margin="0.1",
+            style="rounded"
+        )
+        
+        # Edge attributes
+        dot.attr('edge',
+            fontname="Arial",
+            fontsize="8",
+            len="1.2",
+            arrowsize="0.6"
+        )
+
+        # Process tables and columns
+        tables = {}
+        for table, column, col_type, key, nullable in columns:
+            if table not in tables:
+                tables[table] = []
+            # Only show primary and foreign keys
+            if key in ("PRI", "MUL"):
+                is_key = "•" if key == "PRI" else "○"
+                tables[table].append(f"{column} {is_key}")
+        
+        # Create table nodes
+        for table, cols in tables.items():
+            label = f'''<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4">
+                <TR><TD PORT="header" BGCOLOR="#E0E0E0"><FONT POINT-SIZE="12"><B>{table}</B></FONT></TD></TR>'''
+            
+            for col in cols:
+                label += f'<TR><TD PORT="{col.split()[0]}" ALIGN="LEFT"><FONT POINT-SIZE="10">{col}</FONT></TD></TR>'
+            label += '</TABLE>>'
+            
+            dot.node(table, label=label)
+
+        # Add relationships
+        for table, column, ref_table, ref_column in relationships:
+            dot.edge(
+                f"{table}:{column}:e",
+                f"{ref_table}:{ref_column}:w",
+                arrowhead="dot",
+                arrowtail="none",
+                color="#666666",    # Darker gray for better visibility
+                penwidth="0.8"      # Slightly thicker lines
+            )
+
+        dot.render(output_file, cleanup=True, format="png")
+        cursor.close()
+        conn.close()
+        return f"{output_file}.png", None
+            
+    except Exception as e:
+        return None, f"Failed to generate ERD: {str(e)}"
+    
 if __name__ == "__main__":
     main()
