@@ -1,4 +1,3 @@
-import streamlit as st
 import os
 from dotenv import load_dotenv
 from schema_manager import SchemaManager
@@ -10,6 +9,8 @@ import pandas as pd
 import time
 import tempfile
 import sys
+import streamlit as st
+import graphviz
 
 def load_lottie_url(url: str):
     r = requests.get(url)
@@ -288,10 +289,11 @@ def initialize_session_state():
                 st.error("Schema name not set")
                 return False
             
-            # Initialize SchemaManager with base URL and schema name
+            # Initialize SchemaManager with skip_embeddings=True for schema creation
             st.session_state.schema_manager = SchemaManager(
                 db_url=db_connection_url,
-                schema_name=schema_name
+                schema_name=schema_name,
+                skip_embeddings=True
             )
             
             # Use the engine_url from SchemaManager for consistency
@@ -575,11 +577,20 @@ def display_current_schema():
     """Helper function to display current schema state"""
     if 'schema_manager' not in st.session_state:
         return
-        
-    # Table details
+    
+    # ERD Section - Moved to top and expanded by default
+    with st.expander("Entity Relationship Diagram", expanded=True):
+        with st.spinner("Generating ERD..."):
+            erd_path, error = get_schema_erd()
+            if erd_path:
+                st.image(erd_path, use_container_width=True)
+            else:
+                st.error(f"Failed to generate ERD: {error}")
+    
+    # Table details - Now below ERD and collapsed by default
     schema_info = st.session_state.schema_manager.get_schema_info()
     for table in schema_info:
-        with st.expander(f"📋 {table['table_name']}", expanded=True):
+        with st.expander(f"📋 {table['table_name']}", expanded=False):  # Changed expanded to False
             columns = []
             for col in table['columns']:
                 col_type = col['type']
@@ -603,31 +614,30 @@ def display_current_schema():
                 hide_index=True,
                 use_container_width=True
             )
-    
-    # ERD Section
-    with st.expander("Entity Relationship Diagram", expanded=True):
-        with st.spinner("Generating ERD..."):
-            erd_path, error = get_schema_erd()
-            if erd_path:
-                st.image(erd_path, use_container_width=True)
-            else:
-                st.error(f"Failed to generate ERD: {error}")
 
 def delete_current_schema():
     """Delete current schema and clean up resources"""
     try:
         schema_name = st.session_state.schema_name
         
+        # Delete vector store first
+        if 'schema_manager' in st.session_state:
+            print(f"[DEBUG] Deleting vector store for schema: {schema_name}")
+            st.session_state.schema_manager.delete_vector_store()
+        
+        # Delete history file
+        if 'assistant' in st.session_state:
+            print(f"[DEBUG] Cleaning up assistant resources")
+            st.session_state.assistant.cleanup()
+        
         # Delete the schema from database
+        print(f"[DEBUG] Dropping schema from database")
         with st.session_state.base_schema_manager.engine.connect() as conn:
             conn.execute(text(f"DROP SCHEMA IF EXISTS {schema_name}"))
             conn.commit()
         
-        # Delete history file
-        if 'assistant' in st.session_state:
-            st.session_state.assistant.cleanup()
-        
         # Clear session state
+        print(f"[DEBUG] Clearing session state")
         for key in ['schema_name', 'schema_manager', 'designer', 'assistant']:
             if key in st.session_state:
                 del st.session_state[key]
@@ -635,6 +645,7 @@ def delete_current_schema():
         st.rerun()
         
     except Exception as e:
+        print(f"[DEBUG] Error in delete_current_schema: {str(e)}")
         st.error(f"Failed to delete database: {str(e)}")
 
 def query_database_tab():
@@ -693,6 +704,46 @@ def query_database_tab():
             
         except Exception as e:
             st.error(f"Failed to launch query interface: {str(e)}")
+
+def delete_database():
+    try:
+        schema_name = st.session_state.schema_name
+        print(f"[DEBUG] Deleting database: {schema_name}")
+        
+        # Create a new SchemaManager instance specifically for deletion
+        deletion_manager = SchemaManager(
+            db_url=os.getenv("DATABASE_CONNECTION_URL"),
+            schema_name=schema_name,
+            skip_embeddings=True  # Skip embeddings since we're deleting
+        )
+        
+        # Delete schema history
+        if 'assistant' in st.session_state:
+            print("[DEBUG] Deleting schema history")
+            st.session_state.assistant.history_manager.clear_history()
+        
+        # Delete vector store
+        print("[DEBUG] Attempting to delete vector store")
+        deletion_manager.delete_vector_store()
+        
+        # Delete the database
+        print("[DEBUG] Dropping database")
+        with st.session_state.base_schema_manager.engine.connect() as conn:
+            conn.execute(text(f"DROP DATABASE IF EXISTS {schema_name}"))
+        print("[DEBUG] Database dropped successfully")
+        
+        # Clear session state
+        print("[DEBUG] Clearing session state")
+        for key in ['schema_name', 'schema_manager', 'designer', 'assistant']:
+            if key in st.session_state:
+                del st.session_state[key]
+        
+        st.success("Database deleted successfully!")
+        st.rerun()
+        
+    except Exception as e:
+        print(f"[DEBUG] Error in delete_database: {str(e)}")
+        st.error(f"Failed to delete database: {str(e)}")
 
 def main():
     # Add port configuration
@@ -827,3 +878,4 @@ def main():
 
 if __name__ == "__main__":
     main() 
+
