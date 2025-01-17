@@ -314,6 +314,9 @@ def initialize_session_state():
                 del st.session_state.schema_name
             return False
     
+    if 'schema_input' not in st.session_state:
+        st.session_state.schema_input = ""
+    
     if 'current_table' not in st.session_state:
         st.session_state.current_table = None
     
@@ -510,6 +513,10 @@ def display_schema_history():
         st.error(f"Error displaying history: {str(e)}")
 
 def schema_assistant_tab():
+    # Initialize schema_input if not present
+    if 'schema_input' not in st.session_state:
+        st.session_state.schema_input = ""
+        
     # Welcome header
     st.markdown("""
         <div class="builder-header">
@@ -536,19 +543,16 @@ def schema_assistant_tab():
         </div>
     """, unsafe_allow_html=True)
     
-    # Create two columns for the main content
-    col1, col2 = st.columns([2, 1])
+    # Change column ratio from [2, 1] to [3, 2] to give more space to the schema view
+    col1, col2 = st.columns([3, 2])
     
     with col1:
-        # Input area - removed the assistant-input div wrapper
-        if "schema_input" not in st.session_state:
-            st.session_state.schema_input = ""
-        
+        # Reduce text area height from 100 to 80
         user_input = st.text_area(
             "What would you like to do with the schema?", 
             value=st.session_state.schema_input,
             placeholder="e.g., Create a new users table with email and password columns",
-            height=100,
+            height=80,  # Reduced from 100
             key="schema_input"
         )
         
@@ -563,8 +567,8 @@ def schema_assistant_tab():
                 else:
                     st.error(result['error'])
         
-        # History section
-        st.markdown('<div class="schema-history">', unsafe_allow_html=True)
+        # History section with reduced padding
+        st.markdown('<div class="schema-history" style="margin-top: 1rem;">', unsafe_allow_html=True)
         st.markdown("### 📝 Schema Modification History")
         display_schema_history()
         st.markdown('</div>', unsafe_allow_html=True)
@@ -578,19 +582,20 @@ def display_current_schema():
     if 'schema_manager' not in st.session_state:
         return
     
-    # ERD Section - Moved to top and expanded by default
+    # ERD Section - Increased image width
     with st.expander("Entity Relationship Diagram", expanded=True):
         with st.spinner("Generating ERD..."):
             erd_path, error = get_schema_erd()
             if erd_path:
-                st.image(erd_path, use_container_width=True)
+                # Increased image width by 20%
+                st.image(erd_path, width=None, use_container_width=True)
             else:
                 st.error(f"Failed to generate ERD: {error}")
     
-    # Table details - Now below ERD and collapsed by default
+    # Table details remain the same
     schema_info = st.session_state.schema_manager.get_schema_info()
     for table in schema_info:
-        with st.expander(f"📋 {table['table_name']}", expanded=False):  # Changed expanded to False
+        with st.expander(f"📋 {table['table_name']}", expanded=False):
             columns = []
             for col in table['columns']:
                 col_type = col['type']
@@ -779,7 +784,7 @@ def main():
         
         if available_schemas:
             # Create a 3-column layout with 2:2:1 ratio
-            col1, col2, col3 = st.columns([2, 2, 1.5])
+            col1, col2, col3 = st.columns([2, 2, 1])
             
             # Split schemas into two groups for the first two columns
             mid_point = (len(available_schemas) + 1) // 2

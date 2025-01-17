@@ -583,12 +583,13 @@ def main():
                         "data": pd.DataFrame()
                     })
 def get_schema_erd():
-    """Generate minimal, ultra-compact ERD"""
+    """Generate high-quality ERD using MySQL INFORMATION_SCHEMA"""
     try:
         import mysql.connector
         from graphviz import Digraph
         from urllib.parse import urlparse
         
+        # Use system temp directory instead of local folder
         temp_dir = tempfile.gettempdir()
         output_file = os.path.join(temp_dir, f"{st.session_state.schema_name}_erd")
         
@@ -608,8 +609,7 @@ def get_schema_erd():
 
         # Get table columns and relationships
         cursor.execute("""
-            SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, 
-                   COLUMN_KEY, IS_NULLABLE
+            SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE
             FROM INFORMATION_SCHEMA.COLUMNS
             WHERE TABLE_SCHEMA = %s;
         """, (st.session_state.schema_name,))
@@ -622,74 +622,68 @@ def get_schema_erd():
         """, (st.session_state.schema_name,))
         relationships = cursor.fetchall()
 
-        # Generate ultra-compact ERD
+        # Generate ERD with enhanced settings
         dot = Digraph("ERD", format="png")
         dot.attr(
-            rankdir="LR",      # Horizontal layout
-            splines="ortho",   # Orthogonal lines
-            nodesep="0.3",     # Slightly increased for better visibility
-            ranksep="0.5",     # Slightly increased for better visibility
-            concentrate="true", # Merge edges
-            compound="true",   # Allow edge clustering
-            size="8,4",        # Wider ratio to prevent scrolling
-            dpi="300"          # Good balance of quality and size
+            rankdir="LR",
+            splines="polyline",  # Changed from ortho to polyline for better label handling
+            nodesep="1.0",    # Increased node separation
+            ranksep="1.5",    # Increased rank separation
+            concentrate="false" # Disabled edge concentration for clearer labels
         )
         
-        # Graph attributes
+        # Set global graph attributes for better quality
         dot.attr('graph',
             fontname="Arial",
-            fontsize="10",     # More readable font size
-            pad="0.2",
-            margin="0.2"
+            fontsize="16",
+            pad="0.5",
+            dpi="300"  # Higher DPI for better quality
         )
         
-        # Node attributes
+        # Set node attributes
         dot.attr('node',
             fontname="Arial",
-            fontsize="10",     # More readable font size
+            fontsize="12",
             shape="none",
-            margin="0.1",
+            margin="0",
             style="rounded"
         )
         
-        # Edge attributes
+        # Set edge attributes
         dot.attr('edge',
             fontname="Arial",
-            fontsize="8",
-            len="1.2",
-            arrowsize="0.6"
+            fontsize="10",
+            len="1.5"
         )
 
-        # Process tables and columns
+        # Add tables and relationships
         tables = {}
-        for table, column, col_type, key, nullable in columns:
+        for table, column, column_type in columns:
             if table not in tables:
                 tables[table] = []
-            # Only show primary and foreign keys
-            if key in ("PRI", "MUL"):
-                is_key = "•" if key == "PRI" else "○"
-                tables[table].append(f"{column} {is_key}")
-        
-        # Create table nodes
+            tables[table].append(f"{column} ({column_type})")
+
+        # Create table nodes with enhanced HTML-like labels
         for table, cols in tables.items():
-            label = f'''<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4">
-                <TR><TD PORT="header" BGCOLOR="#E0E0E0"><FONT POINT-SIZE="12"><B>{table}</B></FONT></TD></TR>'''
+            label = f'''<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="8">
+                <TR><TD PORT="header" BGCOLOR="#E0E0E0"><FONT POINT-SIZE="14"><B>{table}</B></FONT></TD></TR>'''
             
             for col in cols:
-                label += f'<TR><TD PORT="{col.split()[0]}" ALIGN="LEFT"><FONT POINT-SIZE="10">{col}</FONT></TD></TR>'
+                label += f'<TR><TD PORT="{col.split()[0]}" ALIGN="LEFT"><FONT POINT-SIZE="12">{col}</FONT></TD></TR>'
             label += '</TABLE>>'
             
             dot.node(table, label=label)
 
-        # Add relationships
+        # Add relationships with improved styling
         for table, column, ref_table, ref_column in relationships:
             dot.edge(
                 f"{table}:{column}:e",
                 f"{ref_table}:{ref_column}:w",
-                arrowhead="dot",
-                arrowtail="none",
-                color="#666666",    # Darker gray for better visibility
-                penwidth="0.8"      # Slightly thicker lines
+                dir="both",
+                arrowhead="crowodot",
+                arrowtail="teedot",
+                color="#666666",
+                penwidth="1.0"
             )
 
         dot.render(output_file, cleanup=True, format="png")
