@@ -8,10 +8,11 @@ from typing import List, Dict
 from numpy.linalg import norm
 
 class SchemaManager:
-    def __init__(self, db_url: str, schema_name: str = None, vector_store_path="./vector_store", model_path="./models"):
+    def __init__(self, db_url: str, schema_name: str = None, vector_store_path="./vector_store", model_path="./models", skip_embeddings=False):
         self.db_url = db_url.rstrip('/')  # Remove trailing slash if present
         self.schema_name = schema_name
         self.model_path = model_path
+        self.skip_embeddings = skip_embeddings
         
         # Create schema-specific vector store path
         if schema_name:
@@ -36,24 +37,27 @@ class SchemaManager:
         self.schema_texts = []
         self.schema_embeddings = None
         self.schema_metadata = []
+        self.normalized_embeddings = None
         
         # Initialize database connection
         self._initialize_db_connection()
         
-        # Initialize embeddings model
-        self._initialize_embeddings_model()
-        
-        # Load existing embeddings if available and schema hasn't changed
-        if self.embeddings_exist():
-            if not self._schema_has_changed():
-                self._load_stored_data()
-                self._normalize_embeddings()
-            else:
-                print("Schema changes detected, updating embeddings...")
+        # Only initialize embeddings if not skipped
+        if not skip_embeddings:
+            # Initialize embeddings model
+            self._initialize_embeddings_model()
+            
+            # Load existing embeddings if available and schema hasn't changed
+            if self.embeddings_exist():
+                if not self._schema_has_changed():
+                    self._load_stored_data()
+                    self._normalize_embeddings()
+                else:
+                    print("Schema changes detected, updating embeddings...")
+                    self.update_vector_store()
+            # Otherwise update vector store for schema-specific embeddings
+            elif schema_name:
                 self.update_vector_store()
-        # Otherwise update vector store for schema-specific embeddings
-        elif schema_name:
-            self.update_vector_store()
         
     def _initialize_db_connection(self):
         """Initialize database connection"""
@@ -93,9 +97,8 @@ class SchemaManager:
             logging.error(f"Database connection error: {str(e)}")
             raise ConnectionError(f"Failed to connect to database: {str(e)}")
         
-        # Add normalized embeddings cache
+        # Initialize normalized embeddings cache but don't normalize yet
         self.normalized_embeddings = None
-        self._normalize_embeddings()
     
     def _initialize_embeddings_model(self):
         """Initialize embeddings model"""
@@ -401,3 +404,23 @@ class SchemaManager:
         except Exception as e:
             logging.warning(f"Error comparing schema metadata: {e}")
             return True  # If there's any error, assume schema has changed
+
+    def delete_vector_store(self):
+        """Delete vector store directory for the current schema"""
+        try:
+            print(f"[DEBUG] Attempting to delete vector store for schema: {self.schema_name}")
+            print(f"[DEBUG] Vector store path: {self.vector_store_path}")
+            
+            # Check if vector store directory exists
+            if os.path.exists(self.vector_store_path):
+                print(f"[DEBUG] Deleting vector store directory: {self.vector_store_path}")
+                import shutil
+                shutil.rmtree(self.vector_store_path)
+                print("[DEBUG] Vector store deleted successfully")
+                return True
+            else:
+                print(f"[DEBUG] Vector store directory not found: {self.vector_store_path}")
+            return False
+        except Exception as e:
+            print(f"[DEBUG] Error deleting vector store: {str(e)}")
+            return False
