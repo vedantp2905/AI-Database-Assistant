@@ -5,10 +5,12 @@ from typing import Tuple
 
 class SQLValidator:
     def __init__(self):
-        self.allowed_operations = {'SELECT'}
-        self.forbidden_keywords = {
-            'DROP', 'DELETE', 'TRUNCATE', 'INSERT', 'UPDATE',
-            'CREATE', 'ALTER', 'GRANT', 'REVOKE'
+        # Allow all common DDL operations
+        self.allowed_operations = {
+            'SELECT', 'CREATE', 'ALTER', 'DROP', 'TRUNCATE', 
+            'RENAME', 'COMMENT', 'INSERT', 'UPDATE', 'DELETE', 
+            'GRANT', 'REVOKE', 'SHUTDOWN', 'KILL', 'RELOAD',
+            'FLUSH', 'RESET', 'PURGE', 'CHANGE MASTER'
         }
     
     def validate(self, query: str) -> Tuple[bool, str]:

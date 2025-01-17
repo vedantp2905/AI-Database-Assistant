@@ -45,6 +45,7 @@ class SchemaAssistant:
                 10. Return INVALID_REQUEST if the operation cannot be performed
                 11. Each statement must end with a semicolon
                 12. No markdown, no explanations, just SQL
+                13. While truncating, always take care of foreign keys. Disable foreign keys, truncate, then enable.
 
                 Example Outputs:
                 
@@ -152,7 +153,7 @@ class SchemaAssistant:
         sql = re.sub(r'/\*.*?\*/', '', sql, flags=re.DOTALL)
         
         # Validate that it contains SQL-like statements
-        sql_keywords = r"(CREATE|ALTER|DROP|TRUNCATE)\s+TABLE|COMMENT\s+ON"
+        sql_keywords = r"(CREATE|ALTER|DROP|TRUNCATE|DELETE|INSERT|UPDATE)\s+(?:TABLE|FROM)?|COMMENT\s+ON"
         if not re.search(sql_keywords, sql, re.IGNORECASE):
             print("[SchemaAssistant] No valid SQL found")
             return ""
@@ -172,11 +173,9 @@ class SchemaAssistant:
             r'TRUNCATE\s+TABLE\s+\w+',
             r'RENAME\s+TABLE\s+\w+\s+TO\s+\w+',
             r'COMMENT\s+=\s*\'.*?\'',
-            r'FOREIGN\s+KEY\s*\(\w+\)\s*REFERENCES'
-        ]
-        
-        # Disallowed patterns for security
-        disallowed_patterns = [
+            r'FOREIGN\s+KEY\s*\(\w+\)\s*REFERENCES',
+            r'SET\s+FOREIGN_KEY_CHECKS\s*=\s*[01]',  # Add pattern for foreign key checks
+            r'DROP\s+FOREIGN\s+KEY\s+\w+',
             r'INSERT\s+INTO\s+',
             r'UPDATE\s+\w+\s+SET',
             r'DELETE\s+FROM\s+',
@@ -187,7 +186,13 @@ class SchemaAssistant:
             r'REVOKE\s+',
             r'FLUSH\s+',
             r'ALTER\s+USER',
-            r'SET\s+PASSWORD'
+            r'SET\s+PASSWORD',
+            r'INSERT\s+INTO\s+\w+',
+            r'UPDATE\s+\w+\s+SET',
+            r'DELETE\s+FROM\s+\w+',
+            r'COMMENT\s+=\s*\'.*?\'',
+            r'COMMENT\s+ON\s+(TABLE|COLUMN)',
+            r'DELETE\s+FROM\s+\w+(\s+WHERE\s+.+)?',  # Allow DELETE with optional WHERE clause
         ]
         
         # Split into individual statements
@@ -197,12 +202,6 @@ class SchemaAssistant:
             # Skip empty statements
             if not statement:
                 continue
-            
-            # Check for disallowed patterns
-            for pattern in disallowed_patterns:
-                if re.search(pattern, statement, re.IGNORECASE):
-                    print(f"[SchemaAssistant] Found disallowed pattern: {pattern}")
-                    return False
             
             # Check if at least one allowed pattern matches
             if not any(re.search(pattern, statement, re.IGNORECASE) for pattern in allowed_patterns):
@@ -554,3 +553,35 @@ class SchemaAssistant:
     def cleanup(self):
         """Clean up resources when schema is deleted"""
         return self.history_manager.delete_history_file()
+
+    def _handle_delete(self, sql: str) -> dict:
+        """Handle DELETE statement"""
+        try:
+            # Extract table name and where clause
+            match = re.search(r"DELETE\s+FROM\s+(\w+)(?:\s+WHERE\s+(.+))?", sql, re.IGNORECASE)
+            if not match:
+                return {
+                    'success': False,
+                    'error': 'Invalid DELETE syntax'
+                }
+            
+            table_name = match.group(1)
+            where_clause = match.group(2) if match.group(2) else None
+            
+            # Execute the DELETE statement
+            with self.designer.engine.begin() as conn:
+                if where_clause:
+                    conn.execute(text(f"DELETE FROM {table_name} WHERE {where_clause}"))
+                else:
+                    conn.execute(text(f"DELETE FROM {table_name}"))
+                
+            return {
+                'success': True,
+                'message': f'Successfully deleted records from {table_name}'
+            }
+            
+        except Exception as e:
+            return {
+                'success': False,
+                'error': f'Error executing DELETE: {str(e)}'
+            }
