@@ -333,9 +333,14 @@ def initialize_session_state():
                 schema_name=st.session_state.schema_name
             )
             
-            if not schema_manager.embeddings_exist():
-                with st.spinner('Generating schema embeddings...'):
-                    schema_manager.update_vector_store()
+            # Always update embeddings with progress bar
+            with st.spinner('Analyzing database schema...'):
+                progress_bar = st.progress(0)
+                schema_manager.update_vector_store(
+                    progress_callback=lambda x: progress_bar.progress(x)
+                )
+                progress_bar.empty()
+                st.success('Schema analysis complete!')
             
             llm_provider = st.sidebar.selectbox(
                 "Select LLM Provider",
@@ -420,11 +425,11 @@ def display_schema_viewer():
             st.markdown("</div></div>", unsafe_allow_html=True)
 
 def main():
-    # Get schema from command line arguments
-    
-    if '--server.port' not in sys.argv:
-        sys.argv.extend(['--server.port', '8502'])
-    
+    # Force set the port before any Streamlit commands
+    import sys
+    sys.argv = [arg for arg in sys.argv if '--server.port' not in arg]
+    sys.argv.extend(['--server.port', '8502'])
+
     st.set_page_config(
         page_title="Chat with Your Database",
         page_icon="🗄️",

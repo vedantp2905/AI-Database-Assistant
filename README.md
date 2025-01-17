@@ -1,133 +1,176 @@
-Here's an updated version of the README.md that includes the changes made to the `src/chatbot.py` file, specifically regarding the LLM's behavior to return only the SQL query without any additional text or formatting. I've also added a section about the new critical rules for SQL generation.
-
-```markdown:README.md
 # AI Database Assistant
 
-A Python-based application that allows natural language interaction with your database using sentence transformers and Google's Gemini Pro model. This application translates questions into SQL queries, executes them, and returns results in a conversational format.
+An intelligent database management system that combines natural language processing with advanced schema management to make database operations accessible to everyone.
+
+## Why This Matters
+
+### 1. Database Design & Management
+- **Natural Language Schema Design**: Create and modify database schemas using plain English
+- **Intelligent Schema Evolution**: AI-powered suggestions for schema improvements
+- **Automated Relationship Detection**: Smart foreign key and relationship management
+- **Schema Version Control**: Track and manage schema changes over time
+
+### 2. Data Exploration
+- **Natural Language Queries**: Convert English questions to SQL
+- **Context-Aware Responses**: Maintains conversation context for follow-up questions
+- **Smart Schema Understanding**: Uses embeddings to find relevant tables and relationships
+- **Automatic Visualizations**: Generates charts and graphs from query results
+
+### 3. Multi-Schema Support
+- **Schema Isolation**: Separate vector stores for each database schema
+- **Schema-Specific Embeddings**: Optimized embeddings for each database
+- **Cross-Schema Analytics**: Query across multiple schemas when needed
+- **Schema Migration Tools**: Easy database creation and modification
 
 ## Key Features
 
-- **Natural Language to SQL**: Convert questions into SQL queries using Gemini Pro
-- **Optimized Schema Understanding**: 
-  - Uses BAAI/bge-large-en-v1.5 embeddings
-  - Normalized vector similarity search
-  - Semantic table matching
-  - Efficient batch processing
-- **Streamlit Web Interface**: Interactive UI with schema visualization
-- **Smart Schema Management**:
-  - Automatic schema detection
-  - Persistent embeddings storage
-  - Optimized similarity search
-  - Batch processing for performance
-- **Security & Validation**: SQL injection prevention and query validation
+### Database Builder
+- Natural language schema creation
+- Entity relationship modeling
+- Automated foreign key detection
+- Schema visualization
+- Change history tracking
+- Schema validation
 
-## Critical Rules for SQL Generation
+### Query Interface
+- Natural language to SQL conversion
+- Context-aware query generation
+- Automatic data visualization
+- Query validation and safety checks
+- Result formatting and explanation
 
-1. Use ONLY the exact table and column names shown in the schema.
-2. Do not use aliases like 'e' or 'd' unless you define them in proper table aliases.
-3. Every column reference must exactly match a column from the schema.
-4. Do not guess or assume column names - use only what is explicitly shown.
-5. If you can't find an exact column or join path in the schema, respond with 'INVALID_QUERY'.
-
-## Prerequisites
-
-- Python 3.8+
-- MySQL Database
-- Google API Key (for Gemini Pro)
-
-## Installation
-
-1. **Clone and Setup**:
-   ```bash
-   git clone <repository-url>
-   cd <project-directory>
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   pip install -r requirements.txt
-   ```
-
-2. **Environment Configuration**:
-   Create a `.env` file:
-   ```plaintext
-   GOOGLE_API_KEY=your_google_api_key
-   SAMBANOVA_API_KEY=your_sambanova_api_key
-   DATABASE_URL=mysql+mysqlconnector://username:password@localhost:3306/database_name
-   TRANSFORMERS_OFFLINE=1
-   SENTENCE_TRANSFORMERS_HOME=./models
-   HF_DATASETS_OFFLINE=1
-   ```
+### Schema Management
+- Schema-specific vector stores
+- Automatic embedding updates
+- Schema change detection
+- Version control
+- Migration management
 
 ## Project Structure
 
 ```
 project/
 ├── src/
-│   ├── main.py           # CLI interface
-│   ├── app.py            # Streamlit web interface
-│   ├── chatbot.py        # Core chatbot logic
-│   ├── schema_manager.py # Schema handling & embeddings
-│   ├── sql_validator.py  # Query validation
-│   └── embed_schema.py   # Schema embedding utility
-├── vector_store/         # Persistent embeddings storage
-│   ├── embeddings.npy    # Numpy array embeddings
-│   ├── texts.json        # Schema descriptions
-│   └── metadata.json     # Table metadata
-├── models/              # Local model storage
-├── requirements.txt     # Dependencies
-└── .env                 # Configuration
+│   ├── query_app.py              # Streamlit web interface
+│   ├── chatbot.py          # Query processing & NL responses
+│   ├── embed_schema.py     # Schema embedding utility
+│   ├── llm_factory.py      # LLM provider management
+│   ├── main.py            # CLI interface
+│   ├── schema_app.py      # Schema management interface
+│   ├── schema_assistant.py # Schema building assistant
+│   ├── schema_designer.py  # Database schema operations
+│   ├── schema_history.py   # Schema version control
+│   ├── schema_manager.py   # Schema & embedding handling
+│   └── sql_validator.py    # Query validation
+├── vector_store/
+│   └── {schema_name}/      # Schema-specific embeddings
+├── schema_history/         # Schema version history
+├── models/                 # Local model storage
+└── .env                    # Configuration
+```
+
+## Installation
+
+1. **Setup Environment**:
+```bash
+git clone <repository-url>
+cd <project-directory>
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+2. **Download Embedding Models**:
+```bash
+python download.py
+```
+3. **Download graphviz**:
+
+Use the following link to download graphviz:
+https://graphviz.org/download/
+
+Add to your PATH while installing
+
+Restart your terminal
+
+4. **Configure Environment**:
+
+Create a .env file in the root directory with the following variables:
+
+```plaintext
+GOOGLE_API_KEY=your_api_key
+SAMBANOVA_API_KEY=your_api_key
+DATABASE_URL=mysql+mysqlconnector://user:pass@localhost:3306/
+TRANSFORMERS_OFFLINE=1
+SENTENCE_TRANSFORMERS_HOME=./models
+HF_DATASETS_OFFLINE=1
 ```
 
 ## Usage
 
-1. **Embed Schema** (Required first time & after database changes):
-   ```bash
-   python src/embed_schema.py
-   ```
+### 1. Database Builder
+```bash
+streamlit run src/schema_app.py --server.port 8501
+```
+- Create new databases
+- Design schemas using natural language
+- Visualize database structure
+- Track schema changes
+- Redirect to the query interface
 
-2. **Launch Application**:
-   - For CLI interface:
-     ```bash
-     python src/main.py
-     ```
-   - For web interface:
-     ```bash
-     streamlit run src/app.py
-     ```
+### 2. Query Interface
+```bash
+streamlit run src/query_app.py --server.port 8502
+```
+- Ask questions in natural language
+- View SQL translations
+- See data visualizations
+- Explore schema relationships
+
+### 3. CLI Interface
+```bash
+python src/main.py
+```
+- Quick database queries
+- Schema management
+- Embedding updates
 
 ## Technical Details
 
 ### Embedding System
-- Uses BAAI/bge-large-en-v1.5 for high-quality embeddings
-- Fallback to all-MiniLM-L6-v2 if needed
-- Normalized vectors for efficient similarity search
-- Persistent storage of embeddings and metadata
-- Batch processing for performance
+- Primary: BAAI/bge-large-en-v1.5 (1.5B parameters, optimized for semantic search)
+- Fallback: all-MiniLM-L6-v2 (384-dimensional embeddings, lightweight alternative)
+- Schema-specific vector stores using Chroma DB for efficient similarity search
+- Automatic updates triggered on schema changes with versioning
+- Normalized vectors using L2 normalization for consistent similarity scores
+- Offline model support with local caching for reliability
+- Configurable embedding dimensions and batch processing
 
-### Schema Management
-- Automatic schema reflection using SQLAlchemy
-- Detailed column information including:
-  - Data types
-  - Primary keys
-  - Foreign key relationships
-- Semantic table search with configurable thresholds
-- Deduplication of search results
+### LLM Integration
+- Google's Gemini Pro with advanced context handling
+- SambaNova (optional) for specialized enterprise deployments
+- Context-aware prompting with dynamic template generation
+- Schema-aware responses with type validation
+- Streaming response support for real-time interaction
+- Automatic prompt optimization based on query patterns
+- Multi-model fallback pipeline for reliability
 
-### Database Connection
-- SQLAlchemy engine with connection pooling
-- Support for MySQL via mysql-connector-python
-- Connection timeout handling
-- Pool recycling for stability
+### Database Support
+- MySQL (primary) with full ACID compliance
+- SQLAlchemy ORM with connection lifecycle management
+- Advanced connection pooling with QueuePool configuration
+- Robust transaction management with automatic rollback
+- Query optimization and execution planning
+- Support for complex joins and subqueries
+- Schema versioning and migration tracking
 
-## Security Features
+## Security
 
-- SQL injection prevention
-- Query validation and sanitization
-- Read-only operations (SELECT only)
-- Forbidden keywords filtering
-
-## Limitations & Known Issues
-
-- SELECT queries only
-- Requires schema embedding after changes in the database
-- Local vector store (not distributed) can change by using a vector database for distributed processing
-- Manual schema updates needed
+- Comprehensive SQL injection prevention using parameterized queries
+- Multi-layer query validation and sanitization
+- Strictly enforced read-only operations for safety
+- Schema-level isolation with separate vector stores
+- Role-based access control with granular permissions
+- Input validation and output encoding
+- Secure connection handling with SSL/TLS
+- Query rate limiting and timeout controls

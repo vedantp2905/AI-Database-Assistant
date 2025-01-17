@@ -9,6 +9,7 @@ from sqlalchemy import text
 import pandas as pd
 import time
 import tempfile
+import sys
 
 def load_lottie_url(url: str):
     r = requests.get(url)
@@ -694,8 +695,7 @@ def query_database_tab():
             st.error(f"Failed to launch query interface: {str(e)}")
 
 def main():
-    # Add these lines at the start of main()
-    import sys
+    # Add port configuration
     if '--server.port' not in sys.argv:
         sys.argv.extend(['--server.port', '8501'])
     

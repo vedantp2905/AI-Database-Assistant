@@ -12,3 +12,9 @@ model = SentenceTransformer(model_name, cache_folder=cache_dir)
 
 # Save the model
 model.save(f"{cache_dir}/bge-large-en-v1.5")
+
+model_name = "all-MiniLM-L6-v2"
+model = SentenceTransformer(model_name, cache_folder=cache_dir)
+
+# Save the model
+model.save(f"{cache_dir}/all-MiniLM-L6-v2")
