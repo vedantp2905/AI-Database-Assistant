@@ -12,49 +12,51 @@ class SchemaManager:
         self.db_url = db_url.rstrip('/')  # Remove trailing slash if present
         self.schema_name = schema_name
         self.model_path = model_path
-        self.vector_store_path = vector_store_path
-        os.makedirs(self.vector_store_path, exist_ok=True)
         
-        # Paths for storing embeddings and metadata
-        self.embeddings_file = os.path.join(vector_store_path, "embeddings.npy")
-        self.texts_file = os.path.join(vector_store_path, "texts.json")
-        self.metadata_file = os.path.join(vector_store_path, "metadata.json")
+        # Create schema-specific vector store path
+        if schema_name:
+            self.vector_store_path = os.path.join(vector_store_path, schema_name)
+            print(f"Using schema-specific vector store path: {self.vector_store_path}")
+        else:
+            self.vector_store_path = vector_store_path
+            print("Using default vector store path (no schema specified)")
+            
+        os.makedirs(self.vector_store_path, exist_ok=True)
+            
+        # Schema-specific paths for storing embeddings and metadata
+        self.embeddings_file = os.path.join(self.vector_store_path, "embeddings.npy")
+        self.texts_file = os.path.join(self.vector_store_path, "texts.json")
+        self.metadata_file = os.path.join(self.vector_store_path, "metadata.json")
+        
+        print(f"Embeddings file: {self.embeddings_file}")
+        print(f"Texts file: {self.texts_file}")
+        print(f"Metadata file: {self.metadata_file}")
         
         # Initialize storage for schema embeddings
         self.schema_texts = []
         self.schema_embeddings = None
         self.schema_metadata = []
         
-        # Try to load existing embeddings
-        self._load_stored_data()
+        # Initialize database connection
+        self._initialize_db_connection()
         
-        # Initialize embeddings with offline support
-        try:
-            # Try loading from local path first
-            local_model_path = os.path.join(self.model_path, "bge-large-en-v1.5")
-            if os.path.exists(local_model_path):
-                self.model = SentenceTransformer(local_model_path)
-                logging.info("Loaded model from local path")
+        # Initialize embeddings model
+        self._initialize_embeddings_model()
+        
+        # Load existing embeddings if available and schema hasn't changed
+        if self.embeddings_exist():
+            if not self._schema_has_changed():
+                self._load_stored_data()
+                self._normalize_embeddings()
             else:
-                # Fallback to downloading or smaller model
-                try:
-                    self.model = SentenceTransformer(
-                        "BAAI/bge-large-en-v1.5",
-                        cache_folder=self.model_path
-                    )
-                    logging.info("Downloaded model from HuggingFace")
-                except Exception as e:
-                    logging.warning(f"Failed to load BAAI model: {e}")
-                    self.model = SentenceTransformer(
-                        'all-MiniLM-L6-v2',
-                        cache_folder=self.model_path
-                    )
-                    logging.info("Using fallback model: all-MiniLM-L6-v2")
+                print("Schema changes detected, updating embeddings...")
+                self.update_vector_store()
+        # Otherwise update vector store for schema-specific embeddings
+        elif schema_name:
+            self.update_vector_store()
         
-        except Exception as e:
-            logging.error(f"Model initialization failed: {e}")
-            raise
-
+    def _initialize_db_connection(self):
+        """Initialize database connection"""
         try:
             # Create SQLAlchemy engine using the provided database URL
             connect_args = {}
@@ -67,13 +69,13 @@ class SchemaManager:
                     'pool_pre_ping': True
                 }
             
-            if schema_name:
+            if self.schema_name:
                 # Properly construct the database URL with schema
                 if '?' in self.db_url:
                     base_url, params = self.db_url.split('?')
-                    self.engine_url = f"{base_url}/{schema_name}?{params}"
+                    self.engine_url = f"{base_url}/{self.schema_name}?{params}"
                 else:
-                    self.engine_url = f"{self.db_url}/{schema_name}"
+                    self.engine_url = f"{self.db_url}/{self.schema_name}"
             else:
                 self.engine_url = self.db_url
             
@@ -85,7 +87,7 @@ class SchemaManager:
             # Test connection
             with self.engine.connect() as conn:
                 result = conn.execute(text("SELECT 1")).fetchone()
-                logging.info("Database connection successful!")
+                print("Database connection successful!")
                 
         except Exception as e:
             logging.error(f"Database connection error: {str(e)}")
@@ -94,6 +96,34 @@ class SchemaManager:
         # Add normalized embeddings cache
         self.normalized_embeddings = None
         self._normalize_embeddings()
+    
+    def _initialize_embeddings_model(self):
+        """Initialize embeddings model"""
+        try:
+            # Try loading from local path first
+            local_model_path = os.path.join(self.model_path, "bge-large-en-v1.5")
+            if os.path.exists(local_model_path):
+                self.model = SentenceTransformer(local_model_path)
+                print("Loaded model from local path")
+            else:
+                # Fallback to downloading or smaller model
+                try:
+                    self.model = SentenceTransformer(
+                        "BAAI/bge-large-en-v1.5",
+                        cache_folder=self.model_path
+                    )
+                    print("Downloaded model from HuggingFace")
+                except Exception as e:
+                    print(f"Failed to load BAAI model: {e}")
+                    self.model = SentenceTransformer(
+                        'all-MiniLM-L6-v2',
+                        cache_folder=self.model_path
+                    )
+                    print("Using fallback model: all-MiniLM-L6-v2")
+        
+        except Exception as e:
+            print(f"Model initialization failed: {e}")
+            raise
     
     def _save_stored_data(self):
         """Save embeddings and metadata to files"""
@@ -120,9 +150,9 @@ class SchemaManager:
                 with open(self.metadata_file) as f:
                     self.schema_metadata = json.load(f)
             
-            logging.info("Loaded existing embeddings and metadata")
+            print("Loaded existing embeddings and metadata")
         except Exception as e:
-            logging.warning(f"Could not load stored data: {e}")
+            print(f"Could not load stored data: {e}")
     
     def get_schema_info(self):
         """Extract schema information from database"""
@@ -192,32 +222,54 @@ class SchemaManager:
         
         return results
 
-    def update_vector_store(self):
-        """Update schema embeddings with optimization"""
+    def update_vector_store(self, progress_callback=None):
+        """Update schema embeddings with optimization and progress tracking"""
+        print("Updating vector store...")
         schema_info = self.get_schema_info()
         self.schema_texts = []
         self.schema_metadata = []
         
         # Batch process descriptions for better performance
         descriptions = []
+        total_items = len(schema_info)
         
-        for table in schema_info:
-            # Start with table name and its description
+        for idx, table in enumerate(schema_info):
+            # Update progress if callback provided
+            if progress_callback:
+                progress = (idx / total_items) * 0.5
+                progress_callback(progress)
+            
+            # Process table descriptions
+            table_metadata = {
+                "table": table['table_name'],
+                "type": "table",
+                "description": table['table_description'],
+                "columns": []
+            }
+            
+            # Add table-level description
             description = f"Table {table['table_name']}"
             if table['table_description']:
                 description += f" ({table['table_description']})"
             description += " contains columns: "
             
+            # Process columns
             column_descriptions = []
             for col in table['columns']:
-                # Build column description with type and constraints
-                col_desc = f"{col['name']} ({col['type']})"
+                # Add column metadata
+                col_metadata = {
+                    "name": col['name'],
+                    "type": col['type'],
+                    "primary_key": col.get('primary_key', False),
+                    "foreign_key": col['foreign_key'],
+                    "description": col.get('column_description', '')
+                }
+                table_metadata["columns"].append(col_metadata)
                 
-                # Add column description if available
+                # Build column description
+                col_desc = f"{col['name']} ({col['type']})"
                 if col['column_description']:
                     col_desc += f" - {col['column_description']}"
-                
-                # Add key information
                 if col['primary_key']:
                     col_desc += " (primary key)"
                 if col['foreign_key']['is_fk']:
@@ -225,26 +277,28 @@ class SchemaManager:
                     ref_descriptions = []
                     for r in refs:
                         ref_desc = f"{r['table']}.{r['column']}"
-                        if r['column_description']:  # Add foreign key column description
+                        if r['column_description']:
                             ref_desc += f" ({r['column_description']})"
                         ref_descriptions.append(ref_desc)
                     col_desc += f" (foreign key referencing {', '.join(ref_descriptions)})"
-                
                 column_descriptions.append(col_desc)
             
             description += ", ".join(column_descriptions)
             descriptions.append(description)
             self.schema_texts.append(description)
-            self.schema_metadata.append({"table": table['table_name']})
+            self.schema_metadata.append(table_metadata)
         
-        # Batch encode all descriptions at once
+        # Batch encode with progress updates
         self.schema_embeddings = self.model.encode(
             descriptions,
             batch_size=32,
-            show_progress_bar=True,
+            show_progress_bar=False,
             convert_to_numpy=True,
             normalize_embeddings=True
         )
+        
+        if progress_callback:
+            progress_callback(1.0)
         
         # Update normalized embeddings cache
         self._normalize_embeddings()
@@ -303,3 +357,47 @@ class SchemaManager:
         except Exception as e:
             logging.error(f"Failed to get schemas: {str(e)}")
             return []
+
+    def _schema_has_changed(self) -> bool:
+        """Compare current schema metadata with stored metadata"""
+        try:
+            # Get current schema metadata in the same format as stored
+            current_schema = []
+            schema_info = self.get_schema_info()
+            
+            for table in schema_info:
+                table_data = {
+                    "table": table['table_name'],
+                    "type": "table",
+                    "description": table['table_description'],
+                    "columns": []
+                }
+                
+                for col in table['columns']:
+                    col_data = {
+                        "name": col['name'],
+                        "type": col['type'],
+                        "primary_key": col.get('primary_key', False),
+                        "foreign_key": {
+                            "is_fk": col['foreign_key'].get('is_fk', False),
+                            "references": col['foreign_key'].get('references', [])
+                        },
+                        "description": col.get('column_description')
+                    }
+                    table_data["columns"].append(col_data)
+                
+                current_schema.append(table_data)
+                
+            # Load stored metadata
+            if not os.path.exists(self.metadata_file):
+                return True
+            
+            with open(self.metadata_file, 'r') as f:
+                stored_metadata = json.load(f)
+            
+            # Compare the exact JSON structure
+            return json.dumps(current_schema, sort_keys=True) != json.dumps(stored_metadata, sort_keys=True)
+            
+        except Exception as e:
+            logging.warning(f"Error comparing schema metadata: {e}")
+            return True  # If there's any error, assume schema has changed

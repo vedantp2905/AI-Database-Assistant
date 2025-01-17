@@ -18,3 +18,4 @@ sentence-transformers>=2.2.2
 tokenizers>=0.21.0,<0.22.0
 transformers>=4.36.0
 torch>=2.1.0
+graphviz==0.20.1
