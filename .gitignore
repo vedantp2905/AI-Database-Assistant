@@ -3,3 +3,4 @@
 /venv
 /models
 /schema_history
+/src/__pycache__

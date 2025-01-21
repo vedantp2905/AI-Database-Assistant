@@ -82,7 +82,7 @@ pip install -r requirements.txt
 
 2. **Download Embedding Models**:
 ```bash
-python download.py
+python download_embedding_models.py
 ```
 3. **Download graphviz**:
 
@@ -99,7 +99,7 @@ Create a .env file in the root directory with the following variables:
 
 ```plaintext
 GOOGLE_API_KEY=your_api_key
-SAMBANOVA_API_KEY=your_api_key
+SAMBANOVA_API_KEY=your_api_key #optional
 DATABASE_URL=mysql+mysqlconnector://user:pass@localhost:3306/
 TRANSFORMERS_OFFLINE=1
 SENTENCE_TRANSFORMERS_HOME=./models
@@ -107,6 +107,11 @@ HF_DATASETS_OFFLINE=1
 ```
 
 ## Usage
+
+### Launch to start both apps (Database Builder & Query Interface (Not tested on mac))
+```bash
+python start_apps.py
+```
 
 ### 1. Database Builder
 ```bash
@@ -118,7 +123,7 @@ streamlit run src/schema_app.py --server.port 8501
 - Track schema changes
 - Redirect to the query interface
 
-### 2. Query Interface
+### 2. Query Interface 
 ```bash
 streamlit run src/query_app.py --server.port 8502
 ```
@@ -127,7 +132,7 @@ streamlit run src/query_app.py --server.port 8502
 - See data visualizations
 - Explore schema relationships
 
-### 3. CLI Interface
+### 3. CLI Interface (optional)
 ```bash
 python src/main.py
 ```
@@ -148,7 +153,7 @@ python src/main.py
 
 ### LLM Integration
 - Google's Gemini Pro with advanced context handling
-- SambaNova (optional) for specialized enterprise deployments
+- SambaNova (optional) for specialized enterprise deployments (https://sambanova.ai/)
 - Context-aware prompting with dynamic template generation
 - Schema-aware responses with type validation
 - Streaming response support for real-time interaction

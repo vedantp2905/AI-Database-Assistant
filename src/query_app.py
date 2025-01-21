@@ -11,10 +11,6 @@ import pandas as pd
 import plotly.express as px
 from streamlit_lottie import st_lottie
 import requests
-import sys
-import mysql.connector
-from graphviz import Digraph
-from urllib.parse import urlparse
 import tempfile
 
 # Custom CSS for better styling
