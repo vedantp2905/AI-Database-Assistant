@@ -26,15 +26,17 @@ class SchemaAssistant:
             # Create prompt for schema manipulation
             prompt = ChatPromptTemplate.from_messages([
                 ("system", f"""You are a database schema expert. Convert the user's natural language request into 
-                MySQL DDL statements.Thnk bigger and anticipate what all tables and users will need. Return ONLY the SQL statements for MySQL without any explanation or formatting.
+                MySQL DDL statements.Thnk bigger and anticipate what all tables and users will need. Return ONLY the SQL statements without any explanation or formatting.
 
                 Current Database Schema:
                 {schema_info}
                 
                 Rules:
+                GIVE SQL FOR MYSQL. FOLLOW THE EXAMPLE OUTPUTS.
                 1. Always design using entity relationship modeling. Try to have seperarte tables for each entity and relationships. 
                 2. Only reference tables and columns that exist in the schema. Dont give excessive columns or tables. Be mindful but take into account what the user wants and entity relationships.
                 3. For new tables or columns, use appropriate data types and constraints. Use on delete cascade for foreign keys.
+
                 4. For ALTER TABLE, ensure the table exists before suggesting modifications
                 5. For foreign keys, ensure referenced tables and columns exist
                 6. Use exact column names as shown in the schema

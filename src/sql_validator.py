@@ -45,13 +45,9 @@ class SQLValidator:
             if first_token.ttype is DML and first_token.value.upper() != 'SELECT':
                 return False, "Only SELECT operations are allowed"
             
-            # Check for forbidden keywords
-            for token in statement.flatten():
-                if token.ttype is Keyword and token.value.upper() in self.forbidden_keywords:
-                    return False, f"Forbidden keyword found: {token.value}"
-            
             # Validate basic syntax
             if not statement.is_group:
+
                 return False, "Invalid SQL syntax"
             
             return True, "Valid query"
