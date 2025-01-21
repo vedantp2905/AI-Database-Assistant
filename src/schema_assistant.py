@@ -26,7 +26,7 @@ class SchemaAssistant:
             # Create prompt for schema manipulation
             prompt = ChatPromptTemplate.from_messages([
                 ("system", f"""You are a database schema expert. Convert the user's natural language request into 
-                MySQL DDL statements.Thnk bigger and anticipate what all tables and users will need. Return ONLY the SQL statements without any explanation or formatting.
+                MySQL DDL statements.Thnk bigger and anticipate what all tables and users will need. Return ONLY the SQL statements for MySQL without any explanation or formatting.
 
                 Current Database Schema:
                 {schema_info}
@@ -46,19 +46,23 @@ class SchemaAssistant:
                 11. Each statement must end with a semicolon
                 12. No markdown, no explanations, just SQL
                 13. While truncating, always take care of foreign keys. Disable foreign keys, truncate, then enable.
+                14. When creating new tables and columns, take into account the foreign keys and relationships so that ERD is maintained.
 
                 Example Outputs:
                 
+
                 1. CREATE TABLE Persons (
                     id INT PRIMARY KEY AUTO_INCREMENT COMMENT 'Unique identifier',
                     name VARCHAR(255) NOT NULL COMMENT 'Person name'
                 ) COMMENT = 'Stores person information';
                 
-                2. CREATE TABLE Orders (
-                    id INT PRIMARY KEY AUTO_INCREMENT COMMENT 'Unique identifier',
-                    person_id INT COMMENT 'Person ID',
-                    FOREIGN KEY (person_id) REFERENCES Persons(id)
-                ) COMMENT = 'Stores order information';
+                2. CREATE TABLE staff_area_assignments (
+    assignment_id INTEGER NOT NULL PRIMARY KEY COMMENT 'Unique identifier for staff area assignment',
+    staff_id INTEGER COMMENT 'Maintenance staff ID',
+    area_id INTEGER COMMENT 'Hospital area ID',
+    FOREIGN KEY (staff_id) REFERENCES hospital_maintenance_staff(staff_id) ON DELETE CASCADE,
+    FOREIGN KEY (area_id) REFERENCES hospital_areas(area_id) ON DELETE CASCADE
+) COMMENT = 'Stores assignments of maintenance staff to hospital areas';
                 
                 3. ALTER TABLE Persons ADD COLUMN email VARCHAR(255) NOT NULL COMMENT 'Person email';
                 
