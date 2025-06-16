@@ -91,9 +91,22 @@ CRITICAL RULES:
             | (lambda x: x.content)
         )
         
-        sql_query = chain.invoke(user_query).strip()
+        raw_response = chain.invoke(user_query)
+        print(f"[DBChatbot] Raw LLM response:\n{raw_response}")
         
-        if not sql_query.upper().startswith('SELECT'):
+        # Clean up the response - strip markdown code blocks
+        sql_query = raw_response.strip()
+        if sql_query.startswith("```") and "```" in sql_query[3:]:
+            # Extract content between first and last ```
+            sql_query = sql_query.split("```", 2)[1]
+            # Remove language identifier if present (like 'sql')
+            if "\n" in sql_query:
+                sql_query = sql_query.split("\n", 1)[1]
+        
+        print(f"[DBChatbot] Cleaned SQL query:\n{sql_query}")
+        
+        if not sql_query.upper().strip().startswith('SELECT'):
+            print(f"[DBChatbot] ERROR: Query doesn't start with SELECT: {sql_query[:50]}...")
             raise ValueError("No valid SQL query found in the response")
         
         if sql_query == 'INVALID_QUERY':

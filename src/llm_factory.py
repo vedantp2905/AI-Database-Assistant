@@ -7,7 +7,7 @@ class LLMFactory:
     def create_llm(provider="sambanova"):
         if provider == "gemini":
             return ChatGoogleGenerativeAI(
-                model="gemini-1.5-pro",
+                model="gemini-2.0-flash",
                 temperature=0.1
             )
         elif provider == "sambanova":
