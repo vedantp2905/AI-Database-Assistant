@@ -40,6 +40,17 @@ def free_port(port):
             for pid in pids:
                 subprocess.run(f"kill -9 {pid}", shell=True)
 
+def open_in_new_terminal(command):
+    # Join the command list into a single string
+    cmd_str = " ".join(command)
+    # AppleScript to open a new Terminal window and run the command
+    script = f'''
+    tell application "Terminal"
+        do script "cd '{os.getcwd()}'; source venv/bin/activate; {cmd_str}"
+    end tell
+    '''
+    subprocess.Popen(['osascript', '-e', script])
+
 def run_apps():
     ports = [8501, 8502]
     for port in ports:
@@ -57,12 +68,12 @@ def run_apps():
     try:
         if terminal_type in ["cmd", "unix", "bash"]:
             # Use subprocess.Popen for concurrent execution
-            subprocess.Popen(app1_command)
-            subprocess.Popen(app2_command)
+            open_in_new_terminal(app1_command)
+            open_in_new_terminal(app2_command)
         elif terminal_type == "powershell":
             # Use Start-Process for PowerShell
-            subprocess.Popen(["Start-Process"] + app1_command, shell=True)
-            subprocess.Popen(["Start-Process"] + app2_command, shell=True)
+            open_in_new_terminal(app1_command)
+            open_in_new_terminal(app2_command)
         else:
             print("Unsupported terminal type. Please run the apps manually in separate terminals:")
             print("streamlit run src/schema_app.py --server.port 8501")

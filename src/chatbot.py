@@ -135,8 +135,8 @@ CRITICAL RULES:
             # Generate SQL query
             sql_query = self.generate_sql(user_question)
             
-            # Validate SQL query
-            is_valid, validation_message = self.sql_validator.validate(sql_query)
+            # Validate SQL query with query operation type
+            is_valid, validation_message = self.sql_validator.validate(sql_query, operation_type="query")
             if not is_valid:
                 return {
                     "success": False,

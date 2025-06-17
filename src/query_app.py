@@ -303,8 +303,8 @@ def initialize_session_state():
                             
                             llm_provider = st.sidebar.selectbox(
                                 "Select LLM Provider",
-                                ["sambanova", "gemini"],
-                                help="SambaNova (faster) or Google's Gemini"
+                                ["gemini"],
+                                help="Google's Gemini"
                             )
                             st.session_state.chatbot = DBChatbot(schema_manager, llm_provider)
                             st.session_state.schema_info = schema_manager.get_schema_info()

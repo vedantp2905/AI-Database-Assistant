@@ -5,6 +5,7 @@ import re
 from sqlalchemy.sql import text
 from sqlalchemy import MetaData
 from schema_history import SchemaHistoryManager
+from sql_validator import SQLValidator
 
 class SchemaAssistant:
     def __init__(self, db_url: str, schema_name: str, llm_provider: str = "gemini"):
@@ -12,6 +13,7 @@ class SchemaAssistant:
         self.designer = SchemaDesigner(db_url)
         self.llm = LLMFactory.create_llm(llm_provider)
         self.history_manager = SchemaHistoryManager(schema_name)
+        self.sql_validator = SQLValidator()
         print("[SchemaAssistant] Initialization complete")
     
     def process_command(self, command: str) -> dict:
@@ -171,36 +173,6 @@ class SchemaAssistant:
         """Validate that the SQL is safe to execute"""
         print(f"[SchemaAssistant] Validating SQL:\n{sql}")
         
-        # List of allowed DDL operations
-        allowed_patterns = [
-            r'CREATE\s+TABLE\s+\w+\s*\(',
-            r'ALTER\s+TABLE\s+\w+\s+(ADD|DROP|MODIFY|CHANGE)\s+',
-            r'DROP\s+TABLE\s+\w+',
-            r'TRUNCATE\s+TABLE\s+\w+',
-            r'RENAME\s+TABLE\s+\w+\s+TO\s+\w+',
-            r'COMMENT\s+=\s*\'.*?\'',
-            r'FOREIGN\s+KEY\s*\(\w+\)\s*REFERENCES',
-            r'SET\s+FOREIGN_KEY_CHECKS\s*=\s*[01]',  # Add pattern for foreign key checks
-            r'DROP\s+FOREIGN\s+KEY\s+\w+',
-            r'INSERT\s+INTO\s+',
-            r'UPDATE\s+\w+\s+SET',
-            r'DELETE\s+FROM\s+',
-            r'DROP\s+DATABASE',
-            r'TRUNCATE\s+DATABASE',
-            r'CREATE\s+USER',
-            r'GRANT\s+',
-            r'REVOKE\s+',
-            r'FLUSH\s+',
-            r'ALTER\s+USER',
-            r'SET\s+PASSWORD',
-            r'INSERT\s+INTO\s+\w+',
-            r'UPDATE\s+\w+\s+SET',
-            r'DELETE\s+FROM\s+\w+',
-            r'COMMENT\s+=\s*\'.*?\'',
-            r'COMMENT\s+ON\s+(TABLE|COLUMN)',
-            r'DELETE\s+FROM\s+\w+(\s+WHERE\s+.+)?',  # Allow DELETE with optional WHERE clause
-        ]
-        
         # Split into individual statements
         statements = [s.strip() for s in sql.split(';') if s.strip()]
         
@@ -209,9 +181,10 @@ class SchemaAssistant:
             if not statement:
                 continue
             
-            # Check if at least one allowed pattern matches
-            if not any(re.search(pattern, statement, re.IGNORECASE) for pattern in allowed_patterns):
-                print(f"[SchemaAssistant] No allowed pattern matches statement: {statement}")
+            # Use SQLValidator with schema operation type
+            is_valid, validation_message = self.sql_validator.validate(statement, operation_type="schema")
+            if not is_valid:
+                print(f"[SchemaAssistant] {validation_message}")
                 return False
         
         return True
