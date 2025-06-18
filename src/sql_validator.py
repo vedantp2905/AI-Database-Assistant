@@ -14,8 +14,14 @@ class SQLValidator:
         self.allowed_data_operations = {
             'INSERT', 'UPDATE', 'DELETE'
         }
+        
+        # MySQL-specific disallowed functions/keywords
+        self.mysql_disallowed = {
+            'CONNECT_BY', 'ROWNUM', 'ROWID', 'FETCH', 'WITH RECURSIVE',  
+            'PIVOT', 'UNPIVOT', 'MERGE'
+        }
     
-    def validate(self, query: str, operation_type="query") -> Tuple[bool, str]:
+    def validate(self, query: str, operation_type="query", dialect="mysql") -> Tuple[bool, str]:
         """
         Validates SQL query for safety and correctness
         
@@ -26,9 +32,13 @@ class SQLValidator:
                             "schema" - Allow schema modification operations
                             "data" - Allow data modification operations
                             "all" - Allow all operations
+            dialect: SQL dialect to validate against (currently only "mysql" is supported)
         
         Returns: (is_valid, error_message)
         """
+        if dialect != "mysql":
+            return False, "Only MySQL dialect is supported"
+            
         try:
             # Parse the SQL query
             parsed = sqlparse.parse(query)
@@ -75,7 +85,40 @@ class SQLValidator:
             if not statement.is_group:
                 return False, "Invalid SQL syntax"
             
+            # MySQL-specific validation
+            query_upper = query.upper()
+            for disallowed in self.mysql_disallowed:
+                if disallowed in query_upper:
+                    return False, f"MySQL does not support '{disallowed}' syntax"
+            
             return True, "Valid query"
             
         except Exception as e:
-            return False, f"Validation error: {str(e)}" 
+            return False, f"Validation error: {str(e)}"
+            
+    def validate_mysql_functions(self, query: str) -> Tuple[bool, str]:
+        """
+        Validates that the query only uses MySQL-compatible functions
+        
+        Args:
+            query: The SQL query to validate
+            
+        Returns: (is_valid, error_message)
+        """
+        # List of non-MySQL function patterns to check
+        non_mysql_patterns = [
+            ('||', 'String concatenation should use CONCAT() in MySQL'),
+            ('TO_CHAR', 'Use DATE_FORMAT() instead of TO_CHAR() in MySQL'),
+            ('NVL', 'Use IFNULL() instead of NVL() in MySQL'),
+            ('DECODE', 'Use CASE WHEN instead of DECODE() in MySQL'),
+            ('ROWNUM', 'Use LIMIT instead of ROWNUM in MySQL'),
+            ('REGEXP_LIKE', 'Use REGEXP instead of REGEXP_LIKE in MySQL'),
+            ('SYSDATE', 'Use NOW() or CURRENT_TIMESTAMP() instead of SYSDATE in MySQL')
+        ]
+        
+        query_upper = query.upper()
+        for pattern, message in non_mysql_patterns:
+            if pattern in query_upper:
+                return False, message
+                
+        return True, "Valid MySQL functions" 

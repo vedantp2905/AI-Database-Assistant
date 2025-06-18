@@ -43,21 +43,23 @@ class DBChatbot:
         
         schema_text = "\n".join(schema_info)
         
-        return f"""IMPORTANT: Below is the exact database schema with correct table and column names.
+        return f"""IMPORTANT: Below is the exact MySQL database schema with correct table and column names.
 Use ONLY these exact names in your query:
 
 {schema_text}
 
-IMPORTANT RULES:
+IMPORTANT RULES FOR MYSQL:
 1. Use ONLY the exact table and column names shown above
 2. Do not use aliases like 'e' or 'd'. Use the exact column names from the schema
 3. Only use columns that are in the schema
-4. For joins, use the exact join syntax from the schema examples   
+4. For joins, use MySQL's JOIN syntax (INNER JOIN, LEFT JOIN, etc.)
 5. Every column reference must exactly match a column from the schema
-6. Do not guess or assume column names - use only what is explicitly shown"""
+6. Do not guess or assume column names - use only what is explicitly shown
+7. Use MySQL-specific functions (e.g., CONCAT instead of ||, DATE_FORMAT instead of TO_CHAR)
+8. For string operations, use MySQL's LIKE operator with % for wildcards"""
     
     def generate_sql(self, user_query):
-        """Generate SQL query from natural language"""
+        """Generate MySQL-specific SQL query from natural language"""
         relevant_schema = self.get_relevant_schema(user_query)
         
         # If no relevant schema found, return error
@@ -68,18 +70,21 @@ IMPORTANT RULES:
         context_str = "\n".join([f"Q: {item['question']}\nA: {item['response']}" for item in self.context])
         
         prompt = ChatPromptTemplate.from_messages([
-            ("system", f"""You are a SQL query generator. Your ONLY job is to convert natural language questions into SQL queries. 
+            ("system", f"""You are a MySQL query generator. Your ONLY job is to convert natural language questions into MySQL-compatible SQL queries.
             
 Schema information:
 {relevant_schema}
 
-CRITICAL RULES:
+CRITICAL RULES FOR MYSQL:
 1. ONLY output the exact SQL query - no explanations, no markdown, no additional text
 2. ALWAYS use fully qualified column names (table_name.column_name)
-3. ONLY use the exact join conditions shown in the schema examples
-4. NEVER create column aliases that don't exist in the schema
-5. For joins, copy the exact join syntax from the schema examples
-6. If you can't find an exact column or join path in the schema, respond with 'INVALID_QUERY'
+3. Use MySQL's JOIN syntax (INNER JOIN, LEFT JOIN, etc.)
+4. Use MySQL-specific functions and operators:
+   - CONCAT() for string concatenation (not ||)
+   - DATE_FORMAT() for date formatting
+   - Use LIMIT for row limiting (not FETCH or ROWNUM)
+   - Use % as wildcard in LIKE expressions
+5. If you can't find an exact column or join path in the schema, respond with 'INVALID_QUERY'
 """),
             ("human", "{question}")
         ])
@@ -117,7 +122,7 @@ CRITICAL RULES:
     def generate_response(self, sql_result, user_question):
         """Generate natural language response from SQL results"""
         prompt = ChatPromptTemplate.from_messages([
-            ("system", """Given the following SQL query results and the original question, 
+            ("system", """Given the following MySQL query results and the original question, 
              generate a natural language response that answers the user's question in a clear 
              and concise way.
              
@@ -135,12 +140,21 @@ CRITICAL RULES:
             # Generate SQL query
             sql_query = self.generate_sql(user_question)
             
-            # Validate SQL query with query operation type
+            # Validate SQL query with query operation type and MySQL dialect
             is_valid, validation_message = self.sql_validator.validate(sql_query, operation_type="query")
             if not is_valid:
                 return {
                     "success": False,
-                    "error": f"SQL validation failed: {validation_message}",
+                    "error": f"MySQL validation failed: {validation_message}",
+                    "sql_query": sql_query
+                }
+            
+            # Additional MySQL-specific function validation
+            is_valid_mysql, mysql_validation_message = self.sql_validator.validate_mysql_functions(sql_query)
+            if not is_valid_mysql:
+                return {
+                    "success": False,
+                    "error": f"MySQL function validation failed: {mysql_validation_message}",
                     "sql_query": sql_query
                 }
             
